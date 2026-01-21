@@ -10,8 +10,9 @@ CREATE TABLE IF NOT EXISTS posts (
     format VARCHAR(20) NOT NULL CHECK (format IN ('static', 'video')),
     palette_id VARCHAR(50) NOT NULL,
     scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'generating', 'generated', 'publishing', 'published', 'failed')),
+    status VARCHAR(30) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'generating', 'generated', 'awaiting_manual_publish', 'publishing', 'published', 'failed')),
+    published_manually BOOLEAN DEFAULT FALSE,
     quote TEXT NOT NULL DEFAULT '',
     quote_type VARCHAR(20) CHECK (quote_type IN ('inquiry', 'manifesto', 'insight')),
     caption TEXT DEFAULT '',

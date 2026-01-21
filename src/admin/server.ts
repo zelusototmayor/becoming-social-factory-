@@ -78,6 +78,21 @@ app.get('/api/tiktok-queue', requireAuth, async (req, res) => {
   res.json({ posts });
 });
 
+// Get Instagram video queue (awaiting manual publish)
+app.get('/api/instagram-video-queue', requireAuth, async (req, res) => {
+  const posts = await db.getInstagramVideosAwaitingPublish();
+  res.json({ posts });
+});
+
+// Mark post as manually published
+app.post('/api/posts/:id/mark-published', requireAuth, async (req, res) => {
+  const post = await db.markAsManuallyPublished(req.params.id);
+  if (!post) {
+    return res.status(404).json({ error: 'Post not found or not awaiting manual publish' });
+  }
+  res.json({ success: true, post });
+});
+
 // Get stats
 app.get('/api/stats', requireAuth, async (req, res) => {
   const stats = await getStats();
@@ -108,6 +123,7 @@ const dashboardHtml = `<!DOCTYPE html>
     .status-pending { background: #f3f4f6; color: #374151; }
     .status-generating { background: #dbeafe; color: #1e40af; }
     .status-generated { background: #d1fae5; color: #065f46; }
+    .status-awaiting_manual_publish { background: #fef3c7; color: #92400e; }
     .status-publishing { background: #fef3c7; color: #92400e; }
     .status-published { background: #d1fae5; color: #065f46; }
     .status-failed { background: #fee2e2; color: #991b1b; }
@@ -120,8 +136,10 @@ const dashboardHtml = `<!DOCTYPE html>
       loggedIn: false,
       posts: [],
       tiktokQueue: [],
+      instagramVideoQueue: [],
       stats: null,
       date: new Date().toISOString().split('T')[0],
+      isDev: ${config.nodeEnv === 'development'},
 
       async init() {
         this.render();
@@ -162,13 +180,15 @@ const dashboardHtml = `<!DOCTYPE html>
       },
 
       async loadData() {
-        const [postsRes, queueRes, statsRes] = await Promise.all([
+        const [postsRes, queueRes, igVideoQueueRes, statsRes] = await Promise.all([
           fetch('/api/posts?date=' + this.date, { credentials: 'include' }),
           fetch('/api/tiktok-queue', { credentials: 'include' }),
+          fetch('/api/instagram-video-queue', { credentials: 'include' }),
           fetch('/api/stats', { credentials: 'include' }),
         ]);
         if (postsRes.ok) this.posts = (await postsRes.json()).posts;
         if (queueRes.ok) this.tiktokQueue = (await queueRes.json()).posts;
+        if (igVideoQueueRes.ok) this.instagramVideoQueue = (await igVideoQueueRes.json()).posts;
         if (statsRes.ok) this.stats = (await statsRes.json()).stats;
         this.render();
       },
@@ -182,6 +202,19 @@ const dashboardHtml = `<!DOCTYPE html>
         const text = post.caption + '\\n\\n' + post.hashtags.map(h => '#' + h).join(' ');
         await navigator.clipboard.writeText(text);
         alert('Caption copied!');
+      },
+
+      async markAsPublished(postId) {
+        if (!confirm('Mark this video as published?')) return;
+        const res = await fetch('/api/posts/' + postId + '/mark-published', {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (res.ok) {
+          await this.loadData();
+        } else {
+          alert('Failed to mark as published');
+        }
       },
 
       render() {
@@ -256,6 +289,34 @@ const dashboardHtml = `<!DOCTYPE html>
                   </div>
                 </div>
               \`).join('')}
+            </div>
+
+            <h2 class="text-lg font-semibold mb-4">Ready to Publish (Instagram Reels)</h2>
+            <div class="space-y-4 mb-8">
+              \${this.instagramVideoQueue.length === 0 ? '<p class="text-gray-500">No videos awaiting manual publish</p>' : ''}
+              \${this.instagramVideoQueue.map(p => {
+                const videoUrl = this.isDev ? '/assets/' + p.id + '.mp4' : p.assetUrl;
+                return \`
+                <div class="bg-white p-4 rounded-lg shadow border-l-4 border-yellow-400">
+                  <div class="flex gap-4">
+                    \${videoUrl ? \`<video src="\${videoUrl}" class="w-24 h-40 object-cover rounded" controls></video>\` : ''}
+                    <div class="flex-1">
+                      <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xs px-2 py-1 rounded bg-pink-100 text-pink-800">instagram reel</span>
+                        <span class="text-gray-500 text-sm">\${new Date(p.scheduledAt).toLocaleString()}</span>
+                      </div>
+                      <p class="font-medium mb-2">"\${p.quote}"</p>
+                      <p class="text-sm text-gray-600 mb-2">\${p.caption}</p>
+                      <p class="text-sm text-blue-600 mb-4">\${p.hashtags.map(h => '#' + h).join(' ')}</p>
+                      <div class="flex gap-2 flex-wrap">
+                        <button onclick="App.copyCaption(\${JSON.stringify(p).replace(/"/g, '&quot;')})" class="text-sm px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy Caption</button>
+                        \${videoUrl ? \`<a href="\${videoUrl}" download="\${p.id}.mp4" class="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700">Download Video</a>\` : ''}
+                        <button onclick="App.markAsPublished('\${p.id}')" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Mark as Published</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              \`}).join('')}
             </div>
 
             <h2 class="text-lg font-semibold mb-4">TikTok Queue</h2>

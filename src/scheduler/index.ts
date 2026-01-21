@@ -239,13 +239,16 @@ async function processRenderJob(postId: string): Promise<void> {
       ? `${config.storageUrlBase}${filename}`
       : `file://${outputPath}`;
 
+    // Videos go to manual publish queue, static images are ready for auto-publish
+    const newStatus = post.format === 'video' ? 'awaiting_manual_publish' : 'generated';
+
     await db.updatePost(postId, {
-      status: 'generated',
+      status: newStatus,
       assetPath: outputPath,
       assetUrl,
     });
 
-    console.log(`Rendered: ${outputPath}`);
+    console.log(`Rendered: ${outputPath} (status: ${newStatus})`);
   } catch (error) {
     console.error(`Render failed:`, error);
     await db.updatePost(postId, { status: 'failed', error: String(error) });
@@ -262,7 +265,10 @@ async function checkAndPublish(): Promise<void> {
   if (settings.instagramEnabled && settings.autoPublishInstagram) {
     const ready = await db.getReadyToPublish('instagram');
     for (const post of ready) {
-      await publishQueue.add('publish', { postId: post.id });
+      // Safety check: only auto-publish static images, videos require manual publish
+      if (post.format === 'static') {
+        await publishQueue.add('publish', { postId: post.id });
+      }
     }
   }
 }

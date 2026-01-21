@@ -47,6 +47,7 @@ export async function updatePost(
     assetPath: string;
     assetUrl: string;
     platformPostId: string;
+    publishedManually: boolean;
     error: string;
   }>
 ): Promise<Post | null> {
@@ -63,6 +64,7 @@ export async function updatePost(
   if (data.assetPath !== undefined) { sets.push(`asset_path = $${i++}`); values.push(data.assetPath); }
   if (data.assetUrl !== undefined) { sets.push(`asset_url = $${i++}`); values.push(data.assetUrl); }
   if (data.platformPostId !== undefined) { sets.push(`platform_post_id = $${i++}`); values.push(data.platformPostId); }
+  if (data.publishedManually !== undefined) { sets.push(`published_manually = $${i++}`); values.push(data.publishedManually); }
   if (data.error !== undefined) { sets.push(`error = $${i++}`); values.push(data.error); }
 
   if (sets.length === 0) return getPost(id);
@@ -123,6 +125,28 @@ export async function getTikTokQueue(): Promise<Post[]> {
      ORDER BY scheduled_at`
   );
   return result.rows.map(mapPost);
+}
+
+export async function getInstagramVideosAwaitingPublish(): Promise<Post[]> {
+  const result = await pool.query(
+    `SELECT * FROM posts
+     WHERE platform = 'instagram'
+       AND format = 'video'
+       AND status = 'awaiting_manual_publish'
+     ORDER BY scheduled_at`
+  );
+  return result.rows.map(mapPost);
+}
+
+export async function markAsManuallyPublished(id: string): Promise<Post | null> {
+  const result = await pool.query(
+    `UPDATE posts
+     SET status = 'published', published_manually = TRUE
+     WHERE id = $1 AND status = 'awaiting_manual_publish'
+     RETURNING *`,
+    [id]
+  );
+  return result.rows[0] ? mapPost(result.rows[0]) : null;
 }
 
 export async function postsExistForDate(date: string, timezone: string): Promise<boolean> {
@@ -230,6 +254,7 @@ function mapPost(row: Record<string, unknown>): Post {
     assetPath: row.asset_path as string | undefined,
     assetUrl: row.asset_url as string | undefined,
     platformPostId: row.platform_post_id as string | undefined,
+    publishedManually: row.published_manually as boolean | undefined,
     error: row.error as string | undefined,
     createdAt: new Date(row.created_at as string),
     updatedAt: new Date(row.updated_at as string),

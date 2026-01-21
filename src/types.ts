@@ -5,7 +5,7 @@
 // Platform types
 export type Platform = 'instagram' | 'tiktok';
 export type PostFormat = 'static' | 'video';
-export type PostStatus = 'pending' | 'generating' | 'generated' | 'publishing' | 'published' | 'failed';
+export type PostStatus = 'pending' | 'generating' | 'generated' | 'awaiting_manual_publish' | 'publishing' | 'published' | 'failed';
 export type QuoteType = 'inquiry' | 'manifesto' | 'insight';
 
 // Palette configuration
@@ -76,6 +76,7 @@ export interface Post {
   assetPath?: string;
   assetUrl?: string;
   platformPostId?: string;
+  publishedManually?: boolean;
   error?: string;
   createdAt: Date;
   updatedAt: Date;
