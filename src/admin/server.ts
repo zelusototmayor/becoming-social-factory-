@@ -64,6 +64,50 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// Check auth status (public - returns whether user is logged in)
+app.get('/api/auth-status', (req, res) => {
+  const token = req.cookies[COOKIE_NAME];
+  if (!token) {
+    return res.json({ authenticated: false });
+  }
+  try {
+    jwt.verify(token, config.jwtSecret);
+    res.json({ authenticated: true });
+  } catch {
+    res.json({ authenticated: false });
+  }
+});
+
+// ==================== PUBLIC ENDPOINTS (no auth required) ====================
+
+// Get posts for date (public, read-only)
+app.get('/api/public/posts', async (req, res) => {
+  const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
+  const settings = await db.getSettings();
+  const posts = await db.getPostsForDate(date, settings.timezone);
+  res.json({ posts, date });
+});
+
+// Get post statistics (public)
+app.get('/api/public/stats', async (req, res) => {
+  const stats = await db.getPostStats();
+  res.json({ stats });
+});
+
+// Get Instagram videos awaiting publish (public, read-only)
+app.get('/api/public/instagram-video-queue', async (req, res) => {
+  const posts = await db.getInstagramVideosAwaitingPublish();
+  res.json({ posts });
+});
+
+// Get TikTok queue (public, read-only)
+app.get('/api/public/tiktok-queue', async (req, res) => {
+  const posts = await db.getTikTokQueue();
+  res.json({ posts });
+});
+
+// ==================== PROTECTED ENDPOINTS (auth required) ====================
+
 // Get posts for date
 app.get('/api/posts', requireAuth, async (req, res) => {
   const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
@@ -117,7 +161,7 @@ const dashboardHtml = `<!DOCTYPE html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Becoming Social - Admin</title>
+  <title>Becoming Social - Portfolio</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .status-pending { background: #f3f4f6; color: #374151; }
@@ -127,13 +171,24 @@ const dashboardHtml = `<!DOCTYPE html>
     .status-publishing { background: #fef3c7; color: #92400e; }
     .status-published { background: #d1fae5; color: #065f46; }
     .status-failed { background: #fee2e2; color: #991b1b; }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen">
   <div id="app"></div>
   <script>
     const App = {
-      loggedIn: false,
+      isAdmin: false,
+      showLoginModal: false,
+      pendingAction: null,
       posts: [],
       tiktokQueue: [],
       instagramVideoQueue: [],
@@ -143,15 +198,18 @@ const dashboardHtml = `<!DOCTYPE html>
 
       async init() {
         this.render();
+        // Load public data immediately
+        await this.loadPublicData();
+        // Check if user is already authenticated
         await this.checkAuth();
       },
 
       async checkAuth() {
         try {
-          const res = await fetch('/api/stats', { credentials: 'include' });
+          const res = await fetch('/api/auth-status', { credentials: 'include' });
           if (res.ok) {
-            this.loggedIn = true;
-            await this.loadData();
+            const data = await res.json();
+            this.isAdmin = data.authenticated;
           }
         } catch {}
         this.render();
@@ -165,8 +223,14 @@ const dashboardHtml = `<!DOCTYPE html>
           credentials: 'include',
         });
         if (res.ok) {
-          this.loggedIn = true;
-          await this.loadData();
+          this.isAdmin = true;
+          this.showLoginModal = false;
+          // Execute pending action if any
+          if (this.pendingAction) {
+            const action = this.pendingAction;
+            this.pendingAction = null;
+            await action();
+          }
         } else {
           alert('Invalid password');
         }
@@ -175,16 +239,32 @@ const dashboardHtml = `<!DOCTYPE html>
 
       async logout() {
         await fetch('/api/logout', { method: 'POST', credentials: 'include' });
-        this.loggedIn = false;
+        this.isAdmin = false;
         this.render();
       },
 
-      async loadData() {
+      requireAuth(action) {
+        if (this.isAdmin) {
+          action();
+        } else {
+          this.pendingAction = action;
+          this.showLoginModal = true;
+          this.render();
+        }
+      },
+
+      closeLoginModal() {
+        this.showLoginModal = false;
+        this.pendingAction = null;
+        this.render();
+      },
+
+      async loadPublicData() {
         const [postsRes, queueRes, igVideoQueueRes, statsRes] = await Promise.all([
-          fetch('/api/posts?date=' + this.date, { credentials: 'include' }),
-          fetch('/api/tiktok-queue', { credentials: 'include' }),
-          fetch('/api/instagram-video-queue', { credentials: 'include' }),
-          fetch('/api/stats', { credentials: 'include' }),
+          fetch('/api/public/posts?date=' + this.date),
+          fetch('/api/public/tiktok-queue'),
+          fetch('/api/public/instagram-video-queue'),
+          fetch('/api/public/stats'),
         ]);
         if (postsRes.ok) this.posts = (await postsRes.json()).posts;
         if (queueRes.ok) this.tiktokQueue = (await queueRes.json()).posts;
@@ -194,41 +274,65 @@ const dashboardHtml = `<!DOCTYPE html>
       },
 
       async triggerGenerate(postId) {
-        await fetch('/api/posts/' + postId + '/generate', { method: 'POST', credentials: 'include' });
-        setTimeout(() => this.loadData(), 1000);
+        this.requireAuth(async () => {
+          await fetch('/api/posts/' + postId + '/generate', { method: 'POST', credentials: 'include' });
+          setTimeout(() => this.loadPublicData(), 1000);
+        });
       },
 
       async copyCaption(post) {
-        const text = post.caption + '\\n\\n' + post.hashtags.map(h => '#' + h).join(' ');
-        await navigator.clipboard.writeText(text);
-        alert('Caption copied!');
+        this.requireAuth(async () => {
+          const text = post.caption + '\\n\\n' + post.hashtags.map(h => '#' + h).join(' ');
+          await navigator.clipboard.writeText(text);
+          alert('Caption copied!');
+        });
+      },
+
+      async downloadVideo(url, filename) {
+        this.requireAuth(async () => {
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        });
       },
 
       async markAsPublished(postId) {
-        if (!confirm('Mark this video as published?')) return;
-        const res = await fetch('/api/posts/' + postId + '/mark-published', {
-          method: 'POST',
-          credentials: 'include',
+        this.requireAuth(async () => {
+          if (!confirm('Mark this video as published?')) return;
+          const res = await fetch('/api/posts/' + postId + '/mark-published', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (res.ok) {
+            await this.loadPublicData();
+          } else {
+            alert('Failed to mark as published');
+          }
         });
-        if (res.ok) {
-          await this.loadData();
-        } else {
-          alert('Failed to mark as published');
-        }
+      },
+
+      changeDate(newDate) {
+        this.date = newDate;
+        this.loadPublicData();
       },
 
       render() {
-        document.getElementById('app').innerHTML = this.loggedIn ? this.dashboardView() : this.loginView();
+        document.getElementById('app').innerHTML = this.dashboardView() + (this.showLoginModal ? this.loginModalView() : '');
         this.bindEvents();
       },
 
-      loginView() {
+      loginModalView() {
         return \`
-          <div class="min-h-screen flex items-center justify-center">
-            <div class="bg-white p-8 rounded-xl shadow-lg w-96">
-              <h1 class="text-2xl font-bold text-center mb-6">Becoming Social</h1>
-              <input type="password" id="password" placeholder="Admin password" class="w-full p-3 border rounded mb-4">
-              <button id="loginBtn" class="w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700">Login</button>
+          <div class="modal-overlay" id="loginModal">
+            <div class="bg-white p-8 rounded-xl shadow-lg w-96 relative">
+              <button id="closeModalBtn" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+              <h2 class="text-xl font-bold text-center mb-2">Admin Access Required</h2>
+              <p class="text-gray-500 text-center text-sm mb-6">Enter password to perform this action</p>
+              <input type="password" id="modalPassword" placeholder="Enter password..." class="w-full p-3 border rounded mb-4">
+              <button id="modalLoginBtn" class="w-full bg-blue-600 text-white p-3 rounded hover:bg-blue-700">Login</button>
             </div>
           </div>
         \`;
@@ -238,22 +342,32 @@ const dashboardHtml = `<!DOCTYPE html>
         return \`
           <div class="max-w-6xl mx-auto p-6">
             <div class="flex justify-between items-center mb-6">
-              <h1 class="text-2xl font-bold">Becoming Social Admin</h1>
-              <button id="logoutBtn" class="text-gray-500 hover:text-gray-700">Logout</button>
+              <h1 class="text-2xl font-bold">Becoming Social</h1>
+              \${this.isAdmin ? \`
+                <button id="logoutBtn" class="text-gray-500 hover:text-gray-700">Logout</button>
+              \` : \`
+                <button id="adminLoginBtn" class="text-blue-600 hover:text-blue-700 text-sm">Admin Login</button>
+              \`}
             </div>
 
             \${this.stats ? \`
             <div class="grid grid-cols-4 gap-4 mb-6">
-              \${Object.entries(this.stats).map(([name, s]) => \`
-                <div class="bg-white p-4 rounded-lg shadow">
-                  <h3 class="text-sm text-gray-500 capitalize">\${name}</h3>
-                  <div class="text-xs mt-2">
-                    <span class="text-blue-600">\${s.waiting} waiting</span> ·
-                    <span class="text-yellow-600">\${s.active} active</span> ·
-                    <span class="text-red-600">\${s.failed} failed</span>
-                  </div>
-                </div>
-              \`).join('')}
+              <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="text-sm text-gray-500">Published</h3>
+                <p class="text-2xl font-bold text-green-600">\${this.stats.published}</p>
+              </div>
+              <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="text-sm text-gray-500">Scheduled</h3>
+                <p class="text-2xl font-bold text-blue-600">\${this.stats.scheduled}</p>
+              </div>
+              <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="text-sm text-gray-500">Awaiting Publish</h3>
+                <p class="text-2xl font-bold text-yellow-600">\${this.stats.awaitingPublish}</p>
+              </div>
+              <div class="bg-white p-4 rounded-lg shadow">
+                <h3 class="text-sm text-gray-500">Failed</h3>
+                <p class="text-2xl font-bold text-red-600">\${this.stats.failed}</p>
+              </div>
             </div>
             \` : ''}
 
@@ -310,7 +424,7 @@ const dashboardHtml = `<!DOCTYPE html>
                       <p class="text-sm text-blue-600 mb-4">\${p.hashtags.map(h => '#' + h).join(' ')}</p>
                       <div class="flex gap-2 flex-wrap">
                         <button onclick="App.copyCaption(\${JSON.stringify(p).replace(/"/g, '&quot;')})" class="text-sm px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy Caption</button>
-                        \${videoUrl ? \`<a href="\${videoUrl}" download="\${p.id}.mp4" class="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700">Download Video</a>\` : ''}
+                        \${videoUrl ? \`<button onclick="App.downloadVideo('\${videoUrl}', '\${p.id}.mp4')" class="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700">Download Video</button>\` : ''}
                         <button onclick="App.markAsPublished('\${p.id}')" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Mark as Published</button>
                       </div>
                     </div>
@@ -332,7 +446,7 @@ const dashboardHtml = `<!DOCTYPE html>
                       <p class="text-sm text-blue-600 mb-4">\${p.hashtags.map(h => '#' + h).join(' ')}</p>
                       <div class="flex gap-2">
                         <button onclick="App.copyCaption(\${JSON.stringify(p).replace(/"/g, '&quot;')})" class="text-sm px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy Caption</button>
-                        \${p.assetUrl ? \`<a href="\${p.assetUrl}" download class="text-sm px-3 py-1 bg-black text-white rounded hover:bg-gray-800">Download</a>\` : ''}
+                        \${p.assetUrl ? \`<button onclick="App.downloadVideo('\${p.assetUrl}', '\${p.id}.mp4')" class="text-sm px-3 py-1 bg-black text-white rounded hover:bg-gray-800">Download</button>\` : ''}
                       </div>
                     </div>
                   </div>
@@ -344,21 +458,33 @@ const dashboardHtml = `<!DOCTYPE html>
       },
 
       bindEvents() {
-        document.getElementById('loginBtn')?.addEventListener('click', () => {
-          this.login(document.getElementById('password').value);
+        // Login modal events
+        document.getElementById('closeModalBtn')?.addEventListener('click', () => this.closeLoginModal());
+        document.getElementById('modalLoginBtn')?.addEventListener('click', () => {
+          this.login(document.getElementById('modalPassword').value);
         });
-        document.getElementById('password')?.addEventListener('keypress', (e) => {
+        document.getElementById('modalPassword')?.addEventListener('keypress', (e) => {
           if (e.key === 'Enter') this.login(e.target.value);
         });
+        document.getElementById('loginModal')?.addEventListener('click', (e) => {
+          if (e.target.id === 'loginModal') this.closeLoginModal();
+        });
+
+        // Admin login button (for non-logged in users)
+        document.getElementById('adminLoginBtn')?.addEventListener('click', () => {
+          this.showLoginModal = true;
+          this.render();
+        });
+
+        // Dashboard events
         document.getElementById('logoutBtn')?.addEventListener('click', () => this.logout());
         document.getElementById('dateInput')?.addEventListener('change', (e) => {
-          this.date = e.target.value;
-          this.loadData();
+          this.changeDate(e.target.value);
         });
         document.getElementById('todayBtn')?.addEventListener('click', () => {
           this.date = new Date().toISOString().split('T')[0];
           document.getElementById('dateInput').value = this.date;
-          this.loadData();
+          this.loadPublicData();
         });
       }
     };

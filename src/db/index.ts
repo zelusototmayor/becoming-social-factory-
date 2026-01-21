@@ -159,6 +159,28 @@ export async function postsExistForDate(date: string, timezone: string): Promise
   return result.rows[0].exists;
 }
 
+export async function getPostStats(): Promise<{
+  published: number;
+  scheduled: number;
+  failed: number;
+  awaitingPublish: number;
+}> {
+  const result = await pool.query(`
+    SELECT
+      COUNT(*) FILTER (WHERE status = 'published') as published,
+      COUNT(*) FILTER (WHERE status IN ('pending', 'generating', 'generated')) as scheduled,
+      COUNT(*) FILTER (WHERE status = 'failed') as failed,
+      COUNT(*) FILTER (WHERE status = 'awaiting_manual_publish') as awaiting_publish
+    FROM posts
+  `);
+  return {
+    published: parseInt(result.rows[0].published),
+    scheduled: parseInt(result.rows[0].scheduled),
+    failed: parseInt(result.rows[0].failed),
+    awaitingPublish: parseInt(result.rows[0].awaiting_publish),
+  };
+}
+
 // ==================== QUOTE HISTORY ====================
 
 export async function addQuoteToHistory(quote: string, type: QuoteType, postId?: string): Promise<void> {
