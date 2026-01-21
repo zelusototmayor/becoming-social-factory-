@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-becoming}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-becoming_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-becoming_social}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-becoming} -d ${POSTGRES_DB:-becoming_social}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Main app (scheduler + admin)
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-becoming}:${POSTGRES_PASSWORD:-becoming_secret}@postgres:5432/${POSTGRES_DB:-becoming_social}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      INSTAGRAM_ACCESS_TOKEN: ${INSTAGRAM_ACCESS_TOKEN}
+      INSTAGRAM_USER_ID: ${INSTAGRAM_USER_ID}
+      INSTAGRAM_PAGE_ID: ${INSTAGRAM_PAGE_ID}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-becoming2024}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      ADMIN_PORT: 3001
+      TIMEZONE: ${TIMEZONE:-Europe/Lisbon}
+      DAILY_POST_COUNT: ${DAILY_POST_COUNT:-5}
+      POST_WINDOW_START: ${POST_WINDOW_START:-09:00}
+      POST_WINDOW_END: ${POST_WINDOW_END:-23:00}
+      OUTPUT_DIR: /app/output
+      STORAGE_URL_BASE: ${STORAGE_URL_BASE:-https://content.zelusottomayor.com/output/}
+      NODE_ENV: production
+    volumes:
+      - /var/www/content/output:/app/output
+      - ./assets:/app/assets:ro
+    ports:
+      - "3002:3001"
+    networks:
+      - default
+      - kamal
+
+networks:
+  kamal:
+    external: true
+
+volumes:
+  postgres_data:
+  redis_data:
