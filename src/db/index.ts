@@ -258,6 +258,145 @@ export async function saveInstagramCredentials(data: {
   );
 }
 
+// ==================== VIRAL VIDEOS ====================
+
+export interface ViralVideo {
+  id: string;
+  status: 'pending' | 'generating' | 'ready' | 'failed';
+  quote?: string;
+  mood?: string;
+  sceneId?: string;
+  assetPath?: string;
+  assetUrl?: string;
+  error?: string;
+  scheduledAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function createViralVideo(data: {
+  status?: string;
+  scheduledAt?: Date;
+}): Promise<ViralVideo> {
+  const result = await pool.query(
+    `INSERT INTO viral_videos (status, scheduled_at)
+     VALUES ($1, $2)
+     RETURNING *`,
+    [data.status || 'pending', data.scheduledAt || new Date()]
+  );
+  return mapViralVideo(result.rows[0]);
+}
+
+export async function getViralVideo(id: string): Promise<ViralVideo | null> {
+  const result = await pool.query('SELECT * FROM viral_videos WHERE id = $1', [id]);
+  return result.rows[0] ? mapViralVideo(result.rows[0]) : null;
+}
+
+export async function updateViralVideo(
+  id: string,
+  data: Partial<{
+    status: string;
+    quote: string;
+    mood: string;
+    sceneId: string;
+    assetPath: string;
+    assetUrl: string;
+    error: string;
+  }>
+): Promise<ViralVideo | null> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+
+  if (data.status !== undefined) { sets.push(`status = $${i++}`); values.push(data.status); }
+  if (data.quote !== undefined) { sets.push(`quote = $${i++}`); values.push(data.quote); }
+  if (data.mood !== undefined) { sets.push(`mood = $${i++}`); values.push(data.mood); }
+  if (data.sceneId !== undefined) { sets.push(`scene_id = $${i++}`); values.push(data.sceneId); }
+  if (data.assetPath !== undefined) { sets.push(`asset_path = $${i++}`); values.push(data.assetPath); }
+  if (data.assetUrl !== undefined) { sets.push(`asset_url = $${i++}`); values.push(data.assetUrl); }
+  if (data.error !== undefined) { sets.push(`error = $${i++}`); values.push(data.error); }
+
+  if (sets.length === 0) return getViralVideo(id);
+
+  sets.push(`updated_at = NOW()`);
+  values.push(id);
+  const result = await pool.query(
+    `UPDATE viral_videos SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    values
+  );
+  return result.rows[0] ? mapViralVideo(result.rows[0]) : null;
+}
+
+export async function getViralVideos(limit = 20): Promise<ViralVideo[]> {
+  const result = await pool.query(
+    `SELECT * FROM viral_videos ORDER BY created_at DESC LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map(mapViralVideo);
+}
+
+export async function getViralVideoQueue(): Promise<ViralVideo[]> {
+  const result = await pool.query(
+    `SELECT * FROM viral_videos
+     WHERE status = 'ready'
+     ORDER BY created_at DESC`
+  );
+  return result.rows.map(mapViralVideo);
+}
+
+/**
+ * Create a post record for a viral video, ready for manual publish
+ */
+export async function createViralPost(data: {
+  quote: string;
+  quoteType: QuoteType;
+  caption: string;
+  hashtags: string[];
+  assetPath: string;
+  assetUrl: string;
+  viralVideoId?: string;
+}): Promise<Post> {
+  const result = await pool.query(
+    `INSERT INTO posts (
+      platform, format, palette_id, scheduled_at, status,
+      quote, quote_type, caption, hashtags, alt_text, asset_path, asset_url
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    RETURNING *`,
+    [
+      'instagram',
+      'video',
+      'viral', // Special palette ID for viral videos
+      new Date(), // Scheduled now
+      'awaiting_manual_publish',
+      data.quote,
+      data.quoteType,
+      data.caption,
+      data.hashtags,
+      `AI-generated viral video with quote: "${data.quote.slice(0, 100)}"`,
+      data.assetPath,
+      data.assetUrl,
+    ]
+  );
+  return mapPost(result.rows[0]);
+}
+
+function mapViralVideo(row: Record<string, unknown>): ViralVideo {
+  return {
+    id: row.id as string,
+    status: row.status as 'pending' | 'generating' | 'ready' | 'failed',
+    quote: row.quote as string | undefined,
+    mood: row.mood as string | undefined,
+    sceneId: row.scene_id as string | undefined,
+    assetPath: row.asset_path as string | undefined,
+    assetUrl: row.asset_url as string | undefined,
+    error: row.error as string | undefined,
+    scheduledAt: new Date(row.scheduled_at as string),
+    createdAt: new Date(row.created_at as string),
+    updatedAt: new Date(row.updated_at as string),
+  };
+}
+
 // ==================== HELPERS ====================
 
 function mapPost(row: Record<string, unknown>): Post {

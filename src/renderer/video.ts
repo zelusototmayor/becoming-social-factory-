@@ -102,6 +102,7 @@ interface Particle {
 
 /**
  * Generate particles matching Becoming App style
+ * Note: Reduced count for memory efficiency in containerized environments
  */
 function generateParticles(
   count: number,
@@ -217,7 +218,8 @@ async function generateParticleOverlay(
   dustColors: string[],
   timestamp: number
 ): Promise<string> {
-  const particles = generateParticles(18, width, height, dustColors);
+  // Reduced from 18 to 12 particles for better memory efficiency in containers
+  const particles = generateParticles(12, width, height, dustColors);
   const totalFrames = Math.ceil(duration * fps);
   const frameDir = path.join(outputDir, `particles_${timestamp}`);
 
@@ -228,8 +230,8 @@ async function generateParticleOverlay(
 
   console.log(`  Generating ${totalFrames} particle frames...`);
 
-  // Generate frames in batches to avoid memory issues
-  const batchSize = 30;
+  // Generate frames in smaller batches to avoid memory issues in containers
+  const batchSize = 15;
   for (let i = 0; i < totalFrames; i += batchSize) {
     const batch = [];
     for (let j = i; j < Math.min(i + batchSize, totalFrames); j++) {
@@ -244,8 +246,9 @@ async function generateParticleOverlay(
   const particleVideo = path.join(outputDir, `temp_particles_${timestamp}.mov`);
   const framePattern = path.join(frameDir, 'frame_%05d.png');
 
+  // Use qtrle codec (Animation/RLE) - much more memory-efficient than PNG while supporting alpha
   await execAsync(
-    `ffmpeg -y -framerate ${fps} -i "${framePattern}" -c:v png -pix_fmt rgba "${particleVideo}"`,
+    `ffmpeg -y -framerate ${fps} -i "${framePattern}" -c:v qtrle "${particleVideo}"`,
     { maxBuffer: 100 * 1024 * 1024 }
   );
 
@@ -418,9 +421,10 @@ export async function renderVideo(options: {
       `[v2][quote]overlay=0:0:enable='gte(t,${introDuration})'[vout]`
     ].join(';');
 
-    // FFmpeg command
+    // FFmpeg command with thread and memory limits for container environments
     const ffmpegCmd = [
       'ffmpeg -y',
+      '-threads 2',  // Limit threads to reduce memory usage
       `-loop 1 -i "${backgroundPath}"`,
       `-loop 1 -t ${introDuration} -i "${introTextOverlay}"`,
       `-loop 1 -t ${quoteDuration} -i "${quoteTextOverlay}"`,
@@ -428,7 +432,7 @@ export async function renderVideo(options: {
       `-filter_complex "${filterComplex}"`,
       '-map "[vout]"',
       `-t ${totalDuration}`,
-      '-c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p',
+      '-c:v libx264 -preset medium -crf 23 -pix_fmt yuv420p -threads 2',
       `-r ${fps}`,
       `"${outputPath}"`
     ].join(' ');

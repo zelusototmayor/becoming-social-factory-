@@ -19,6 +19,12 @@ const configSchema = z.object({
   openaiApiKey: z.string().optional(),
   openaiModel: z.string().default('gpt-4o'),
 
+  // Runway (AI Video Generation)
+  runwayApiKey: z.string().optional(),
+
+  // ElevenLabs (Voice Narration)
+  elevenlabsApiKey: z.string().optional(),
+
   // Instagram
   metaAppId: z.string().optional(),
   metaAppSecret: z.string().optional(),
@@ -53,6 +59,8 @@ function loadConfig() {
     redisPassword: process.env.REDIS_PASSWORD,
     openaiApiKey: process.env.OPENAI_API_KEY,
     openaiModel: process.env.OPENAI_MODEL,
+    runwayApiKey: process.env.RUNWAY_API_KEY,
+    elevenlabsApiKey: process.env.ELEVENLABS_API_KEY,
     metaAppId: process.env.META_APP_ID,
     metaAppSecret: process.env.META_APP_SECRET,
     instagramAccessToken: process.env.INSTAGRAM_ACCESS_TOKEN,

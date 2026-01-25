@@ -59,11 +59,29 @@ CREATE TABLE IF NOT EXISTS instagram_credentials (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Viral videos (AI-generated cinematic micro-stories)
+CREATE TABLE IF NOT EXISTS viral_videos (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'generating', 'ready', 'failed')),
+    quote TEXT,
+    mood VARCHAR(50),
+    scene_id VARCHAR(100),
+    asset_path TEXT,
+    asset_url TEXT,
+    error TEXT,
+    scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON posts(scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
 CREATE INDEX IF NOT EXISTS idx_posts_platform ON posts(platform);
 CREATE INDEX IF NOT EXISTS idx_quote_history_created ON quote_history(created_at);
+CREATE INDEX IF NOT EXISTS idx_viral_videos_status ON viral_videos(status);
+CREATE INDEX IF NOT EXISTS idx_viral_videos_created ON viral_videos(created_at);
 
 -- Insert default settings
 INSERT INTO settings (id) VALUES (1) ON CONFLICT DO NOTHING;
@@ -85,4 +103,9 @@ CREATE TRIGGER posts_updated_at
 DROP TRIGGER IF EXISTS settings_updated_at ON settings;
 CREATE TRIGGER settings_updated_at
     BEFORE UPDATE ON settings
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS viral_videos_updated_at ON viral_videos;
+CREATE TRIGGER viral_videos_updated_at
+    BEFORE UPDATE ON viral_videos
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();

@@ -10,6 +10,29 @@ Automated social content creation and publishing for Becoming.
 - **3 color palettes** with anti-repetition
 - **AI-powered quotes** using the same psychology as the app
 - **Template-locked design**: Only text changes
+- **Viral Videos**: AI-generated cinematic micro-stories via Runway
+
+## Viral Video System
+
+Generate AI-powered cinematic micro-story videos optimized for virality:
+
+- **Hook (0-3s)**: Visual hook + teaser text
+- **Build (3-8s)**: Quote revelation with animated text
+- **Payoff (8-12s)**: Full message + emotional climax
+
+### How It Works
+
+1. Quote is generated → GPT analyzes mood
+2. Scene is selected from 18 cinematic templates
+3. Runway AI generates 5-second video clip
+4. FFmpeg composites: clip + text animations + music + logo
+5. Video appears in dashboard for manual posting
+
+### Cost
+
+~$0.26 per viral video:
+- Runway: ~$0.25 (5-sec clip)
+- OpenAI: ~$0.01 (scene mapping)
 
 ## Quick Start
 
@@ -61,9 +84,24 @@ becoming-social-factory/
 │   ├── publisher/         # Instagram API
 │   ├── scheduler/         # Job processing
 │   ├── db/                # Database
-│   └── admin/             # Dashboard
-├── assets/                # Logos, backgrounds, fonts
-├── output/                # Generated assets
+│   ├── admin/             # Dashboard
+│   └── viral/             # Viral video generation
+│       ├── index.ts       # Main orchestrator
+│       ├── types.ts       # Type definitions
+│       ├── sceneLibrary.ts # 18 cinematic scene templates
+│       ├── sceneMapper.ts # GPT mood analysis
+│       ├── runwayClient.ts # Runway API integration
+│       ├── compositor.ts  # FFmpeg video composition
+│       └── musicLibrary.ts # Background music
+├── assets/
+│   ├── palette1/          # Logos, backgrounds
+│   ├── palette2/
+│   ├── palette3/
+│   ├── music/             # Background music tracks
+│   └── fonts/
+├── output/
+│   ├── clips/             # Runway-generated clips
+│   └── viral/             # Final viral videos
 ├── docker-compose.yml
 └── package.json
 ```
@@ -140,6 +178,10 @@ npm run generate:backgrounds
 | `/api/tiktok-queue` | GET | Get TikTok queue |
 | `/api/stats` | GET | Queue statistics |
 | `/api/posts/:id/generate` | POST | Trigger generation |
+| `/api/viral` | GET | Get viral videos |
+| `/api/viral/queue` | GET | Get ready viral videos |
+| `/api/viral/generate` | POST | Generate new viral video |
+| `/api/viral/status` | GET | Check system status |
 
 ## Environment Variables
 
@@ -148,6 +190,7 @@ npm run generate:backgrounds
 | `DATABASE_URL` | Yes | PostgreSQL connection |
 | `REDIS_HOST` | Yes | Redis host |
 | `OPENAI_API_KEY` | No | For AI quotes (uses fallbacks without) |
+| `RUNWAY_API_KEY` | No | For viral videos (get from dev.runwayml.com) |
 | `INSTAGRAM_ACCESS_TOKEN` | No | For publishing |
 | `ADMIN_PASSWORD` | No | Dashboard password (default: becoming2024) |
 | `TIMEZONE` | No | Default: Europe/Lisbon |

@@ -203,10 +203,10 @@ export async function generateMetadata(quote: string): Promise<{
   hashtags: string[];
   altText: string;
 }> {
-  // Default metadata
+  // Default metadata (max 4 hashtags)
   const defaults = {
     caption: `${quote}\n\n✨ What small choice will you make today?`,
-    hashtags: ['becoming', 'growth', 'mindset', 'motivation', 'selfgrowth', 'dailyreminder', 'inspiration', 'personaldevelopment'],
+    hashtags: ['becoming', 'growth', 'mindset', 'wisdom'],
     altText: `Motivational quote on gradient background: "${quote}"`,
   };
 
@@ -230,10 +230,10 @@ export async function generateMetadata(quote: string): Promise<{
             content: `Generate Instagram post metadata for a motivational quote.
 
 CAPTION: Start with the quote, add 1-2 lines of engaging commentary, end with subtle CTA. Keep authentic.
-HASHTAGS: 8-12 relevant tags, mix popular and niche, lowercase, no #.
+HASHTAGS: EXACTLY 4 relevant tags (no more, no less), mix popular and niche, lowercase, no #.
 ALT_TEXT: Describe for accessibility, under 200 chars.
 
-Return JSON: {"caption": "...", "hashtags": ["tag1", "tag2"], "altText": "..."}`,
+Return JSON: {"caption": "...", "hashtags": ["tag1", "tag2", "tag3", "tag4"], "altText": "..."}`,
           },
           { role: 'user', content: `Quote: "${quote}"` },
         ],
@@ -249,9 +249,23 @@ Return JSON: {"caption": "...", "hashtags": ["tag1", "tag2"], "altText": "..."}`
     if (!content) throw new Error('Empty response');
 
     const result = JSON.parse(content);
+
+    // Ensure exactly 4 hashtags
+    let hashtags = result.hashtags || defaults.hashtags;
+    if (hashtags.length > 4) {
+      hashtags = hashtags.slice(0, 4);
+    } else if (hashtags.length < 4) {
+      const fallbackTags = ['becoming', 'growth', 'mindset', 'wisdom', 'motivation'];
+      while (hashtags.length < 4) {
+        const tag = fallbackTags.find((t: string) => !hashtags.includes(t));
+        if (tag) hashtags.push(tag);
+        else break;
+      }
+    }
+
     return {
       caption: result.caption || defaults.caption,
-      hashtags: result.hashtags || defaults.hashtags,
+      hashtags,
       altText: result.altText || defaults.altText,
     };
   } catch (error) {

@@ -12,7 +12,8 @@ import bcrypt from 'bcryptjs';
 import * as path from 'path';
 import { config } from '../config.js';
 import * as db from '../db/index.js';
-import { getStats, triggerDaily, triggerContent } from '../scheduler/index.js';
+import { getStats, triggerDaily, triggerContent, triggerViralVideo } from '../scheduler/index.js';
+import { checkViralSystemStatus, estimateViralVideoCost } from '../viral/index.js';
 
 const app = express();
 app.use(express.json());
@@ -155,6 +156,67 @@ app.post('/api/posts/:id/generate', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// ==================== VIRAL VIDEO ENDPOINTS ====================
+
+// Get viral videos
+app.get('/api/viral', requireAuth, async (req, res) => {
+  const videos = await db.getViralVideos(20);
+  const status = await checkViralSystemStatus();
+  const cost = estimateViralVideoCost();
+  res.json({ videos, systemStatus: status, costEstimate: cost });
+});
+
+// Get viral video queue (ready to post)
+app.get('/api/viral/queue', requireAuth, async (req, res) => {
+  const videos = await db.getViralVideoQueue();
+  res.json({ videos });
+});
+
+// Trigger viral video generation (runs directly, not through queue)
+app.post('/api/viral/generate', requireAuth, async (req, res) => {
+  console.log('🎬 /api/viral/generate endpoint called');
+
+  // Start generation in background
+  triggerViralVideo().catch(error => {
+    console.error('Viral video generation error:', error);
+  });
+
+  // Respond immediately
+  res.json({ success: true, message: 'Viral video generation started' });
+});
+
+// Get viral system status
+app.get('/api/viral/status', requireAuth, async (req, res) => {
+  const status = await checkViralSystemStatus();
+  const cost = estimateViralVideoCost();
+  res.json({ status, cost });
+});
+
+// Download video proxy (forces download instead of opening in browser)
+app.get('/api/download', requireAuth, async (req, res) => {
+  const url = req.query.url as string;
+  const filename = req.query.filename as string || 'video.mp4';
+
+  if (!url) {
+    return res.status(400).json({ error: 'URL required' });
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch video' });
+    }
+
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    const buffer = await response.arrayBuffer();
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    res.status(500).json({ error: 'Download failed' });
+  }
+});
+
 // Dashboard HTML
 const dashboardHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -192,6 +254,9 @@ const dashboardHtml = `<!DOCTYPE html>
       posts: [],
       tiktokQueue: [],
       instagramVideoQueue: [],
+      viralVideos: [],
+      viralStatus: null,
+      viralCost: null,
       stats: null,
       date: new Date().toISOString().split('T')[0],
       isDev: ${config.nodeEnv === 'development'},
@@ -210,6 +275,10 @@ const dashboardHtml = `<!DOCTYPE html>
           if (res.ok) {
             const data = await res.json();
             this.isAdmin = data.authenticated;
+            // Load viral data if authenticated
+            if (this.isAdmin) {
+              await this.loadViralData();
+            }
           }
         } catch {}
         this.render();
@@ -270,7 +339,24 @@ const dashboardHtml = `<!DOCTYPE html>
         if (queueRes.ok) this.tiktokQueue = (await queueRes.json()).posts;
         if (igVideoQueueRes.ok) this.instagramVideoQueue = (await igVideoQueueRes.json()).posts;
         if (statsRes.ok) this.stats = (await statsRes.json()).stats;
+
+        // Load viral videos if admin
+        if (this.isAdmin) {
+          await this.loadViralData();
+        }
         this.render();
+      },
+
+      async loadViralData() {
+        try {
+          const viralRes = await fetch('/api/viral', { credentials: 'include' });
+          if (viralRes.ok) {
+            const viralData = await viralRes.json();
+            this.viralVideos = viralData.videos;
+            this.viralStatus = viralData.systemStatus;
+            this.viralCost = viralData.costEstimate;
+          }
+        } catch {}
       },
 
       async triggerGenerate(postId) {
@@ -290,12 +376,26 @@ const dashboardHtml = `<!DOCTYPE html>
 
       async downloadVideo(url, filename) {
         this.requireAuth(async () => {
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+          // Use server proxy to force download (works on mobile and cross-origin)
+          const downloadUrl = '/api/download?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename);
+          window.location.href = downloadUrl;
+        });
+      },
+
+      async generateViralVideo() {
+        console.log('generateViralVideo called, isAdmin:', this.isAdmin);
+        this.requireAuth(async () => {
+          console.log('Inside requireAuth callback');
+          try {
+            console.log('Calling /api/viral/generate...');
+            const res = await fetch('/api/viral/generate', { method: 'POST', credentials: 'include' });
+            console.log('Response:', res.status);
+            alert('Viral video generation started! This may take 2-3 minutes.');
+            setTimeout(() => this.loadViralData().then(() => this.render()), 5000);
+          } catch (err) {
+            console.error('Fetch error:', err);
+            alert('Error: ' + err);
+          }
         });
       },
 
@@ -434,7 +534,7 @@ const dashboardHtml = `<!DOCTYPE html>
             </div>
 
             <h2 class="text-lg font-semibold mb-4">TikTok Queue</h2>
-            <div class="space-y-4">
+            <div class="space-y-4 mb-8">
               \${this.tiktokQueue.length === 0 ? '<p class="text-gray-500">No videos ready</p>' : ''}
               \${this.tiktokQueue.map(p => \`
                 <div class="bg-white p-4 rounded-lg shadow">
@@ -453,6 +553,76 @@ const dashboardHtml = `<!DOCTYPE html>
                 </div>
               \`).join('')}
             </div>
+
+            \${this.isAdmin ? \`
+            <!-- Viral Videos Section -->
+            <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-xl mb-8">
+              <div class="flex justify-between items-center mb-4">
+                <div>
+                  <h2 class="text-lg font-semibold">Viral Videos (AI-Generated)</h2>
+                  <p class="text-sm text-gray-500">Cinematic micro-stories powered by Runway AI</p>
+                </div>
+                <div class="text-right">
+                  <button onclick="App.generateViralVideo()" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:opacity-90 font-medium">
+                    Generate New Viral Video
+                  </button>
+                  <p class="text-xs text-gray-500 mt-1">Est. cost: $\${this.viralCost?.total?.toFixed(2) || '0.26'}</p>
+                </div>
+              </div>
+
+              \${this.viralStatus ? \`
+              <div class="bg-white/50 rounded-lg p-3 mb-4 text-sm">
+                <div class="flex gap-4 flex-wrap">
+                  <span class="\${this.viralStatus.status.ffmpeg ? 'text-green-600' : 'text-red-600'}">
+                    \${this.viralStatus.status.ffmpeg ? 'OK' : 'X'} FFmpeg
+                  </span>
+                  <span class="\${this.viralStatus.status.runway?.available ? 'text-green-600' : 'text-red-600'}">
+                    \${this.viralStatus.status.runway?.available ? 'OK' : 'X'} Runway
+                  </span>
+                  <span class="\${this.viralStatus.status.openai ? 'text-green-600' : 'text-red-600'}">
+                    \${this.viralStatus.status.openai ? 'OK' : 'X'} OpenAI
+                  </span>
+                  <span class="\${this.viralStatus.status.elevenlabs?.available ? 'text-green-600' : 'text-yellow-600'}">
+                    \${this.viralStatus.status.elevenlabs?.available ? 'OK' : '!'} ElevenLabs
+                  </span>
+                  <span class="text-gray-600">
+                    Music: \${this.viralStatus.status.music?.available || 0}/\${this.viralStatus.status.music?.total || 0}
+                  </span>
+                </div>
+                \${this.viralStatus.issues.length > 0 ? \`
+                <div class="mt-2 text-yellow-700">\${this.viralStatus.issues.join(' | ')}</div>
+                \` : ''}
+              </div>
+              \` : ''}
+
+              <div class="space-y-4">
+                \${this.viralVideos.length === 0 ? '<p class="text-gray-500">No viral videos yet</p>' : ''}
+                \${this.viralVideos.map(v => {
+                  const viralVideoUrl = this.isDev ? '/assets/viral_' + v.id + '.mp4' : v.assetUrl;
+                  return \`
+                  <div class="bg-white p-4 rounded-lg shadow">
+                    <div class="flex gap-4">
+                      \${viralVideoUrl ? \`<video src="\${viralVideoUrl}" class="w-32 h-56 object-cover rounded" controls></video>\` : '<div class="w-32 h-56 bg-gray-100 rounded flex items-center justify-center text-gray-400">No video</div>'}
+                      <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-2">
+                          <span class="text-xs px-2 py-1 rounded \${v.status === 'ready' ? 'bg-green-100 text-green-800' : v.status === 'generating' ? 'bg-blue-100 text-blue-800' : v.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}">\${v.status}</span>
+                          \${v.mood ? \`<span class="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded">\${v.mood}</span>\` : ''}
+                          <span class="text-xs text-gray-500">\${new Date(v.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p class="font-medium mb-2">"\${v.quote || 'Quote pending...'}"</p>
+                        \${v.error ? \`<p class="text-red-600 text-sm">\${v.error}</p>\` : ''}
+                        \${v.status === 'ready' && viralVideoUrl ? \`
+                        <div class="flex gap-2 mt-4">
+                          <button onclick="App.downloadVideo('\${viralVideoUrl}', 'viral_\${v.id}.mp4')" class="text-sm px-3 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded hover:opacity-90">Download for Posting</button>
+                        </div>
+                        \` : ''}
+                      </div>
+                    </div>
+                  </div>
+                \`}).join('')}
+              </div>
+            </div>
+            \` : ''}
           </div>
         \`;
       },

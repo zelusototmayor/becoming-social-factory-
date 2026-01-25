@@ -13,6 +13,7 @@ import { renderStatic, renderVideo, checkQuoteFit } from '../renderer/index.js';
 import { publishImage, publishVideo } from '../publisher/instagram.js';
 import { template, selectPalette, getPalette } from '../template.js';
 import type { JobData, Platform } from '../types.js';
+import { generateViralVideo, checkViralSystemStatus } from '../viral/index.js';
 
 // Redis connection config for BullMQ
 const connection = {
@@ -27,12 +28,14 @@ const schedulerQueue = new Queue('scheduler', { connection });
 const contentQueue = new Queue('content', { connection });
 const renderQueue = new Queue('render', { connection });
 const publishQueue = new Queue('publish', { connection });
+const viralQueue = new Queue('viral', { connection });
 
 // Workers
 let schedulerWorker: Worker;
 let contentWorker: Worker;
 let renderWorker: Worker;
 let publishWorker: Worker;
+let viralWorker: Worker;
 
 /**
  * Initialize scheduler
@@ -66,8 +69,17 @@ export async function init(): Promise<void> {
     }
   }, { connection, concurrency: 1 });
 
+  // Viral video worker - generates AI-powered viral videos
+  viralWorker = new Worker('viral', async (job: Job) => {
+    if (job.name === 'daily') {
+      await generateDailyViralVideo();
+    } else if (job.name === 'generate') {
+      await processViralVideoJob(job.data.viralVideoId);
+    }
+  }, { connection, concurrency: 1 });
+
   // Error handlers
-  [schedulerWorker, contentWorker, renderWorker, publishWorker].forEach(w => {
+  [schedulerWorker, contentWorker, renderWorker, publishWorker, viralWorker].forEach(w => {
     w.on('failed', (job, err) => console.error(`Job ${job?.id} failed:`, err.message));
     w.on('completed', (job) => console.log(`Job ${job.id} completed`));
   });
@@ -83,6 +95,12 @@ export async function init(): Promise<void> {
   await publishQueue.add('check', {}, {
     repeat: { pattern: '*/5 * * * *' },
     jobId: 'publish-check',
+  });
+
+  // Daily viral video generation at 6 AM
+  await viralQueue.add('daily', {}, {
+    repeat: { pattern: '0 6 * * *', tz: config.timezone },
+    jobId: 'daily-viral',
   });
 
   console.log('Scheduler initialized');
@@ -327,6 +345,162 @@ async function processPublishJob(postId: string): Promise<void> {
 }
 
 /**
+ * Generate daily viral video
+ */
+async function generateDailyViralVideo(): Promise<void> {
+  console.log('🎬 Starting daily viral video generation...');
+
+  // Check system readiness
+  console.log('🎬 Checking system status...');
+  const status = await checkViralSystemStatus();
+  console.log('🎬 System status:', JSON.stringify(status, null, 2));
+
+  if (!status.ready) {
+    console.warn('⚠️ Viral system not ready:', status.issues.join(', '));
+    return;
+  }
+
+  console.log('🎬 Creating viral video record in DB...');
+  // Create viral video record in DB (outside try so it's available in catch)
+  const viralVideo = await db.createViralVideo({
+    status: 'generating',
+    scheduledAt: new Date(),
+  });
+  console.log('🎬 Viral video record created:', viralVideo.id);
+
+  try {
+    // Generate the viral video with progress updates
+    const result = await generateViralVideo({
+      outputDir: config.outputDir,
+      filename: `viral_${viralVideo.id}.mp4`,
+      onProgress: async (stage, data) => {
+        // Update DB with quote and mood as soon as they're available
+        if (data.quote || data.mood) {
+          await db.updateViralVideo(viralVideo.id, {
+            quote: data.quote,
+            mood: data.mood,
+          });
+        }
+      },
+    });
+
+    if (result.success && result.outputPath) {
+      const assetUrl = config.storageUrlBase
+        ? `${config.storageUrlBase}viral_${viralVideo.id}.mp4`
+        : `file://${result.outputPath}`;
+
+      await db.updateViralVideo(viralVideo.id, {
+        status: 'ready',
+        quote: result.config?.quote,
+        assetPath: result.outputPath,
+        assetUrl,
+        mood: result.config?.scene.mood,
+        sceneId: result.config?.scene.scenePrompt?.substring(0, 50),
+      });
+
+      // Create a post record for the Instagram manual publish queue
+      if (result.caption && result.hashtags && result.config) {
+        console.log('📱 Creating Instagram post for manual publish...');
+        const post = await db.createViralPost({
+          quote: result.config.quote,
+          quoteType: result.config.quoteType,
+          caption: result.caption,
+          hashtags: result.hashtags,
+          assetPath: result.outputPath,
+          assetUrl,
+          viralVideoId: viralVideo.id,
+        });
+        console.log(`   Post created: ${post.id} (awaiting manual publish)`);
+      }
+
+      console.log('✅ Viral video generated:', result.outputPath);
+    } else {
+      await db.updateViralVideo(viralVideo.id, {
+        status: 'failed',
+        error: result.error || 'Unknown error',
+      });
+      console.error('❌ Viral video generation failed:', result.error);
+    }
+  } catch (error) {
+    console.error('❌ Viral video generation error:', error);
+    // Make sure to mark as failed if any error occurs
+    await db.updateViralVideo(viralVideo.id, {
+      status: 'failed',
+      error: String(error),
+    });
+  }
+}
+
+/**
+ * Process individual viral video job
+ */
+async function processViralVideoJob(viralVideoId: string): Promise<void> {
+  console.log(`Processing viral video ${viralVideoId}`);
+
+  const viralVideo = await db.getViralVideo(viralVideoId);
+  if (!viralVideo) {
+    throw new Error('Viral video not found');
+  }
+
+  await db.updateViralVideo(viralVideoId, { status: 'generating' });
+
+  try {
+    const result = await generateViralVideo({
+      outputDir: config.outputDir,
+      filename: `viral_${viralVideoId}.mp4`,
+      onProgress: async (stage, data) => {
+        if (data.quote || data.mood) {
+          await db.updateViralVideo(viralVideoId, {
+            quote: data.quote,
+            mood: data.mood,
+          });
+        }
+      },
+    });
+
+    if (result.success && result.outputPath) {
+      const assetUrl = config.storageUrlBase
+        ? `${config.storageUrlBase}viral_${viralVideoId}.mp4`
+        : `file://${result.outputPath}`;
+
+      await db.updateViralVideo(viralVideoId, {
+        status: 'ready',
+        quote: result.config?.quote,
+        assetPath: result.outputPath,
+        assetUrl,
+        mood: result.config?.scene.mood,
+      });
+
+      // Create a post record for the Instagram manual publish queue
+      if (result.caption && result.hashtags && result.config) {
+        console.log('📱 Creating Instagram post for manual publish...');
+        const post = await db.createViralPost({
+          quote: result.config.quote,
+          quoteType: result.config.quoteType,
+          caption: result.caption,
+          hashtags: result.hashtags,
+          assetPath: result.outputPath,
+          assetUrl,
+          viralVideoId: viralVideoId,
+        });
+        console.log(`   Post created: ${post.id} (awaiting manual publish)`);
+      }
+
+      console.log('✅ Viral video ready:', result.outputPath);
+    } else {
+      throw new Error(result.error || 'Generation failed');
+    }
+  } catch (error) {
+    console.error('Viral video failed:', error);
+    await db.updateViralVideo(viralVideoId, {
+      status: 'failed',
+      error: String(error),
+    });
+    throw error;
+  }
+}
+
+/**
  * Calculate evenly spaced times
  */
 function calculateTimes(count: number, start: string, end: string): string[] {
@@ -361,6 +535,16 @@ export async function triggerContent(postId: string): Promise<void> {
   await contentQueue.add('generate', { postId });
 }
 
+export async function triggerViralVideo(): Promise<void> {
+  console.log('🎬 triggerViralVideo called - running directly...');
+  // Run directly instead of through queue for immediate feedback
+  await generateDailyViralVideo();
+}
+
+export async function triggerViralVideoById(viralVideoId: string): Promise<void> {
+  await viralQueue.add('generate', { viralVideoId });
+}
+
 /**
  * Get queue stats
  */
@@ -377,6 +561,7 @@ export async function getStats() {
     content: await getQueueStats(contentQueue),
     render: await getQueueStats(renderQueue),
     publish: await getQueueStats(publishQueue),
+    viral: await getQueueStats(viralQueue),
   };
 }
 
@@ -390,6 +575,7 @@ export async function shutdown(): Promise<void> {
     contentWorker?.close(),
     renderWorker?.close(),
     publishWorker?.close(),
+    viralWorker?.close(),
   ]);
   console.log('Scheduler stopped');
 }
