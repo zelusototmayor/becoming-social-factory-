@@ -50,6 +50,7 @@ export interface ViralHook {
 export interface VoiceScript {
   hook: string;
   quote: string;
+  cta?: string; // CTA text for outro (e.g., "Save this for when you need it")
   pauseDuration: number; // milliseconds between hook and quote
   fullText: string; // Combined text for TTS with SSML pause
 }

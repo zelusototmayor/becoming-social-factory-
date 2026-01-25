@@ -8,8 +8,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from '../config.js';
-import type { VoiceScript, VoiceGenerationResult, QuoteType } from './types.js';
+import type { VoiceScript, VoiceGenerationResult, QuoteType, CtaType } from './types.js';
 import { VOICE_MAP } from './types.js';
+
+// CTA text for voice narration
+export const CTA_VOICE_TEXT: Record<CtaType, string> = {
+  save: 'Save this, for when you need it.',
+  share: 'Send this, to someone who needs it.',
+};
 
 const ELEVENLABS_API_BASE = 'https://api.elevenlabs.io/v1';
 
@@ -46,20 +52,34 @@ function getVoiceSettings(quoteType: QuoteType): { stability: number; similarity
 }
 
 /**
- * Build a voice script with hook, pause, and quote
+ * Build a voice script with hook, pause, quote, and optional CTA
  */
-export function buildVoiceScript(hook: string, quote: string, pauseDuration = DEFAULT_PAUSE_DURATION): VoiceScript {
+export function buildVoiceScript(
+  hook: string,
+  quote: string,
+  ctaType?: CtaType,
+  pauseDuration = DEFAULT_PAUSE_DURATION
+): VoiceScript {
   // Use SSML-like pause syntax that ElevenLabs understands
   // ElevenLabs uses <break time="Xms"/> for pauses
   const pauseMs = pauseDuration;
 
-  // Build the full text with a natural pause
-  // ElevenLabs interprets "..." as a brief pause, and we add extra spacing
-  const fullText = `${hook}... ... ${quote}`;
+  // Get CTA text if provided
+  const ctaText = ctaType ? CTA_VOICE_TEXT[ctaType] : undefined;
+
+  // Build the full text with natural pauses
+  // ElevenLabs interprets "..." as a brief pause
+  let fullText = `${hook}... ... ${quote}`;
+
+  // Add CTA with pause before it
+  if (ctaText) {
+    fullText += `... ... ${ctaText}`;
+  }
 
   return {
     hook,
     quote,
+    cta: ctaText,
     pauseDuration: pauseMs,
     fullText,
   };

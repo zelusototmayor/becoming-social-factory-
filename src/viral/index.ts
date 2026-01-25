@@ -95,7 +95,11 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
     let voicePath: string | undefined;
     let voiceScript: VoiceScript | undefined;
 
-    const script = buildVoiceScript(hook.text, quote);
+    // Determine CTA type now (needed for voice script)
+    const ctaType = getNextCtaType();
+    console.log(`   CTA outro: "${ctaType}"`);
+
+    const script = buildVoiceScript(hook.text, quote, ctaType);
     const voiceResult = await generateScriptedVoiceNarration({
       script,
       outputDir: clipsDir,
@@ -106,7 +110,7 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
       voicePath = voiceResult.audioPath;
       voiceScript = voiceResult.script;
       console.log(`   Voice generated: ${voicePath}`);
-      console.log(`   Script: "${script.fullText.slice(0, 60)}..."`);
+      console.log(`   Script: "${script.fullText.slice(0, 80)}..."`);
     } else {
       console.warn(`   Voice generation skipped: ${voiceResult.error}`);
     }
@@ -137,10 +141,6 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
     const outputPath = path.join(outputDir, filename);
 
     const music = selectTrackForVideo(scene.musicMood, 12);
-
-    // Alternate between CTA types (save / share)
-    const ctaType = getNextCtaType();
-    console.log(`   CTA outro: "${ctaType}"`);
 
     const videoConfig: ViralVideoConfig = {
       quote,

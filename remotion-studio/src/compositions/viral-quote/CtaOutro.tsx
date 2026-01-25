@@ -7,16 +7,14 @@ interface CtaOutroProps {
   ctaType: CtaType;
 }
 
-const CTA_CONTENT: Record<CtaType, { text: string; subtext: string; icon: string }> = {
+const CTA_CONTENT: Record<CtaType, { text: string; subtext: string }> = {
   save: {
     text: 'Save this',
     subtext: 'for when you need it',
-    icon: '🔖',
   },
   share: {
     text: 'Send this',
     subtext: 'to someone who needs it',
-    icon: '💌',
   },
 };
 
@@ -50,18 +48,6 @@ export const CtaOutro: React.FC<CtaOutroProps> = ({ ctaType }) => {
     }
   );
 
-  // Scale animation for icon
-  const iconScale = interpolate(
-    frame,
-    [0, 15, 25],
-    [0.5, 1.1, 1],
-    {
-      extrapolateLeft: 'clamp',
-      extrapolateRight: 'clamp',
-      easing: Easing.out(Easing.back(1.5)),
-    }
-  );
-
   // Text slide up animation
   const textSlide = interpolate(
     frame,
@@ -86,18 +72,6 @@ export const CtaOutro: React.FC<CtaOutroProps> = ({ ctaType }) => {
     }
   );
 
-  // Subtle pulse on the icon
-  const pulseFrame = frame % 60;
-  const pulse = interpolate(
-    pulseFrame,
-    [0, 30, 60],
-    [1, 1.05, 1],
-    {
-      extrapolateLeft: 'clamp',
-      extrapolateRight: 'clamp',
-    }
-  );
-
   return (
     <AbsoluteFill
       style={{
@@ -114,20 +88,9 @@ export const CtaOutro: React.FC<CtaOutroProps> = ({ ctaType }) => {
           alignItems: 'center',
           justifyContent: 'center',
           textAlign: 'center',
-          gap: 16,
+          gap: 12,
         }}
       >
-        {/* Icon */}
-        <div
-          style={{
-            fontSize: 56,
-            transform: `scale(${iconScale * pulse})`,
-            filter: 'drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5))',
-          }}
-        >
-          {content.icon}
-        </div>
-
         {/* Main text */}
         <div
           style={{
