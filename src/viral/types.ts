@@ -7,6 +7,9 @@
 // Content types (matches generator)
 export type QuoteType = 'inquiry' | 'manifesto' | 'insight';
 
+// CTA types for video outro (alternates between videos)
+export type CtaType = 'save' | 'share';
+
 // Voice configuration per content type
 export interface VoiceConfig {
   voiceId: string;
@@ -123,6 +126,7 @@ export interface ViralVideoResult {
   caption?: string;
   hashtags?: string[];
   hookText?: string;
+  ctaType?: CtaType;
   error?: string;
 }
 

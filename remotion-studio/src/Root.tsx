@@ -29,6 +29,7 @@ export const RemotionRoot: React.FC = () => {
           voicePath: '',
           musicPath: '',
           musicVolume: 0.25,
+          ctaType: 'save' as const,
         }}
       />
     </>

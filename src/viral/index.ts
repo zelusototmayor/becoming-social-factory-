@@ -18,7 +18,16 @@ import { compositeViralVideo, checkFFmpeg } from './compositor.js';
 import { getMusicStatus, selectTrackForVideo } from './musicLibrary.js';
 import { generateViralCaption } from './captionGenerator.js';
 import { VOICE_MAP } from './types.js';
-import type { ViralVideoResult, ViralVideoConfig, ViralHook, VoiceScript, DynamicSceneConfig, QuoteType } from './types.js';
+import type { ViralVideoResult, ViralVideoConfig, ViralHook, VoiceScript, DynamicSceneConfig, QuoteType, CtaType } from './types.js';
+
+// CTA alternation counter (persists across calls within the same process)
+let ctaCounter = 0;
+function getNextCtaType(): CtaType {
+  const types: CtaType[] = ['save', 'share'];
+  const cta = types[ctaCounter % types.length];
+  ctaCounter++;
+  return cta;
+}
 
 interface GenerateOptions {
   outputDir?: string;
@@ -129,6 +138,10 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
 
     const music = selectTrackForVideo(scene.musicMood, 12);
 
+    // Alternate between CTA types (save / share)
+    const ctaType = getNextCtaType();
+    console.log(`   CTA outro: "${ctaType}"`);
+
     const videoConfig: ViralVideoConfig = {
       quote,
       quoteType,
@@ -157,6 +170,7 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
           musicPath: music?.path,
           musicVolume: 0.25,
           outputPath,
+          ctaType, // Pass CTA type for outro
         });
 
         if (renderResult.success) {
@@ -175,6 +189,7 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
             caption,
             hashtags,
             hookText: hook.text,
+            ctaType,
           };
         } else {
           console.warn(`   ⚠️ Remotion render failed: ${renderResult.error}`);
@@ -199,6 +214,7 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
     });
 
     console.log(`✅ Viral video generated with FFmpeg: ${outputPath}`);
+    console.warn(`   Note: FFmpeg fallback does not support CTA outro`);
 
     // Generate caption and hashtags (max 4)
     console.log('📝 Generating caption and hashtags...');
@@ -213,6 +229,7 @@ export async function generateViralVideo(options: GenerateOptions = {}): Promise
       caption,
       hashtags,
       hookText: hook.text,
+      ctaType, // Track intended CTA even though FFmpeg doesn't render it
     };
   } catch (error) {
     console.error('❌ Viral video generation failed:', error);
@@ -307,5 +324,5 @@ export async function setupRemotionRenderer(): Promise<{ success: boolean; error
 }
 
 // Re-export types
-export type { ViralVideoResult, ViralVideoConfig, ViralHook, VoiceScript, QuoteType } from './types.js';
+export type { ViralVideoResult, ViralVideoConfig, ViralHook, VoiceScript, QuoteType, CtaType } from './types.js';
 export { VOICE_MAP } from './types.js';

@@ -11,6 +11,8 @@ import {
 import { z } from 'zod';
 import { HookOverlay } from './HookOverlay';
 import { QuoteReveal } from './QuoteReveal';
+import { CtaOutro } from './CtaOutro';
+import type { CtaType } from './CtaOutro';
 
 // Schema for props validation
 export const viralQuoteSchema = z.object({
@@ -21,6 +23,7 @@ export const viralQuoteSchema = z.object({
   voicePath: z.string(),
   musicPath: z.string().optional(),
   musicVolume: z.number().min(0).max(1).default(0.25),
+  ctaType: z.enum(['save', 'share']).default('save'),
 });
 
 export type ViralQuoteProps = z.infer<typeof viralQuoteSchema>;
@@ -29,7 +32,9 @@ export type ViralQuoteProps = z.infer<typeof viralQuoteSchema>;
 const HOOK_START = 0;
 const HOOK_DURATION = 75; // 2.5 seconds
 const QUOTE_START = 60; // Start quote slightly before hook ends
-const QUOTE_DURATION = 255; // ~8.5 seconds
+const QUOTE_DURATION = 195; // ~6.5 seconds (shortened to make room for CTA)
+const CTA_START = 255; // ~8.5 seconds in
+const CTA_DURATION = 105; // ~3.5 seconds (until 12s mark)
 
 // Convert file path to staticFile URL for Remotion
 // Paths are relative to the public folder (e.g., "render-assets/video.mp4")
@@ -51,6 +56,7 @@ export const ViralQuote: React.FC<ViralQuoteProps> = ({
   voicePath,
   musicPath,
   musicVolume = 0.25,
+  ctaType = 'save',
 }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
@@ -127,9 +133,14 @@ export const ViralQuote: React.FC<ViralQuoteProps> = ({
         <HookOverlay text={hookText} quoteType={quoteType} />
       </Sequence>
 
-      {/* Quote text (2-10s) */}
+      {/* Quote text (2-8.5s) */}
       <Sequence from={QUOTE_START} durationInFrames={QUOTE_DURATION}>
         <QuoteReveal text={quote} quoteType={quoteType} />
+      </Sequence>
+
+      {/* CTA Outro (8.5-12s) */}
+      <Sequence from={CTA_START} durationInFrames={CTA_DURATION}>
+        <CtaOutro ctaType={ctaType as CtaType} />
       </Sequence>
     </AbsoluteFill>
   );

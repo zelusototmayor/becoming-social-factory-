@@ -8,7 +8,7 @@
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { QuoteType } from './types.js';
+import type { QuoteType, CtaType } from './types.js';
 import { acquireRenderLock, sanitizeRenderError } from '../utils/renderLock.js';
 
 const REMOTION_STUDIO_PATH = path.join(process.cwd(), 'remotion-studio');
@@ -24,6 +24,7 @@ export interface RemotionRenderOptions {
   outputPath: string;
   durationInFrames?: number;
   fps?: number;
+  ctaType?: CtaType;
 }
 
 export interface RemotionRenderResult {
@@ -135,6 +136,7 @@ export async function renderViralVideo(options: RemotionRenderOptions): Promise<
     voicePath: voiceFileName ? `render-assets/${voiceFileName}` : '',
     musicPath: musicFileName ? `render-assets/${musicFileName}` : '',
     musicVolume: options.musicVolume ?? 0.25,
+    ctaType: options.ctaType ?? 'save',
   };
 
   console.log('============================================');
