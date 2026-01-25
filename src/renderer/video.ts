@@ -13,6 +13,7 @@ import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import { template } from '../template.js';
+import { acquireRenderLock, sanitizeRenderError } from '../utils/renderLock.js';
 import type { Palette, QuoteType } from '../types.js';
 
 const execAsync = promisify(exec);
@@ -344,6 +345,14 @@ export async function renderVideo(options: {
     return { success: false, error: 'FFmpeg not installed' };
   }
 
+  // Acquire render lock to prevent concurrent renders (OOM protection)
+  let releaseLock: (() => void) | null = null;
+  try {
+    releaseLock = await acquireRenderLock();
+  } catch (lockError) {
+    return { success: false, error: sanitizeRenderError(lockError) };
+  }
+
   const tempDir = path.dirname(outputPath);
   const timestamp = Date.now();
 
@@ -447,15 +456,24 @@ export async function renderVideo(options: {
     });
 
     console.log(`Video rendered: ${outputPath}`);
+
+    // Release render lock
+    if (releaseLock) releaseLock();
+
     return { success: true, duration: totalDuration };
   } catch (error) {
+    // Release render lock
+    if (releaseLock) releaseLock();
+
     // Cleanup on error
     tempFiles.forEach(f => {
       if (fs.existsSync(f)) {
         try { fs.unlinkSync(f); } catch {}
       }
     });
-    console.error('Video render failed:', error);
-    return { success: false, error: String(error) };
+
+    const sanitizedError = sanitizeRenderError(error);
+    console.error('Video render failed:', sanitizedError);
+    return { success: false, error: sanitizedError };
   }
 }

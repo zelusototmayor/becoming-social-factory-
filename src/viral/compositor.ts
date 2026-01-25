@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { config } from '../config.js';
 import { selectTrackForVideo } from './musicLibrary.js';
+import { acquireRenderLock, sanitizeRenderError } from '../utils/renderLock.js';
 import type { ViralVideoConfig, TextAnimation } from './types.js';
 
 interface CompositeOptions {
@@ -25,24 +26,31 @@ interface CompositeOptions {
 export async function compositeViralVideo(options: CompositeOptions): Promise<void> {
   const { clipPath, config: videoConfig, outputPath, logoPath, voicePath } = options;
 
-  // Select background music
-  const music = selectTrackForVideo(videoConfig.scene.musicMood, videoConfig.duration);
+  // Acquire render lock to prevent concurrent renders (OOM protection)
+  const releaseLock = await acquireRenderLock();
 
-  // Build FFmpeg command
-  const args = buildFFmpegArgs({
-    clipPath,
-    outputPath,
-    quote: videoConfig.quote,
-    hookText: videoConfig.scene.hookText,
-    animation: videoConfig.scene.textAnimation,
-    duration: videoConfig.duration,
-    musicPath: music?.path,
-    voicePath,
-    logoPath,
-    paletteId: videoConfig.paletteId,
-  });
+  try {
+    // Select background music
+    const music = selectTrackForVideo(videoConfig.scene.musicMood, videoConfig.duration);
 
-  await runFFmpeg(args);
+    // Build FFmpeg command
+    const args = buildFFmpegArgs({
+      clipPath,
+      outputPath,
+      quote: videoConfig.quote,
+      hookText: videoConfig.scene.hookText,
+      animation: videoConfig.scene.textAnimation,
+      duration: videoConfig.duration,
+      musicPath: music?.path,
+      voicePath,
+      logoPath,
+      paletteId: videoConfig.paletteId,
+    });
+
+    await runFFmpeg(args);
+  } finally {
+    releaseLock();
+  }
 }
 
 interface FFmpegBuildOptions {
@@ -323,12 +331,14 @@ function runFFmpeg(args: string[]): Promise<void> {
       if (code === 0) {
         resolve();
       } else {
-        reject(new Error(`FFmpeg failed with code ${code}: ${stderr}`));
+        // Sanitize the error message
+        const rawError = `FFmpeg failed with code ${code}: ${stderr}`;
+        reject(new Error(sanitizeRenderError(rawError)));
       }
     });
 
     process.on('error', (err) => {
-      reject(new Error(`FFmpeg error: ${err.message}`));
+      reject(new Error(sanitizeRenderError(err)));
     });
   });
 }

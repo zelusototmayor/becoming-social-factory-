@@ -9,6 +9,7 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { QuoteType } from './types.js';
+import { acquireRenderLock, sanitizeRenderError } from '../utils/renderLock.js';
 
 const REMOTION_STUDIO_PATH = path.join(process.cwd(), 'remotion-studio');
 
@@ -64,6 +65,14 @@ export async function renderViralVideo(options: RemotionRenderOptions): Promise<
       success: false,
       error: remotionStatus.reason,
     };
+  }
+
+  // Acquire render lock to prevent concurrent renders (OOM protection)
+  let releaseLock: (() => void) | null = null;
+  try {
+    releaseLock = await acquireRenderLock();
+  } catch (lockError) {
+    return { success: false, error: sanitizeRenderError(lockError) };
   }
 
   // Ensure output directory exists
@@ -165,6 +174,8 @@ export async function renderViralVideo(options: RemotionRenderOptions): Promise<
 
     // Verify output exists
     if (!fs.existsSync(options.outputPath)) {
+      // Release lock before returning
+      if (releaseLock) releaseLock();
       return {
         success: false,
         error: 'Render completed but output file not found',
@@ -173,15 +184,22 @@ export async function renderViralVideo(options: RemotionRenderOptions): Promise<
 
     console.log(`Remotion render complete: ${options.outputPath}`);
 
+    // Release lock on success
+    if (releaseLock) releaseLock();
+
     return {
       success: true,
       outputPath: options.outputPath,
       duration: 12, // Default 12 second video
     };
   } catch (error) {
+    // Release lock on error
+    if (releaseLock) releaseLock();
+
+    const sanitizedError = sanitizeRenderError(error);
     return {
       success: false,
-      error: `Remotion render failed: ${error}`,
+      error: sanitizedError,
     };
   } finally {
     // Clean up copied files
