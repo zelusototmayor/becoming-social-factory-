@@ -381,6 +381,132 @@ export async function createViralPost(data: {
   return mapPost(result.rows[0]);
 }
 
+// ==================== CAROUSELS ====================
+
+export interface Carousel {
+  id: string;
+  status: 'pending' | 'generating' | 'ready' | 'published' | 'failed';
+  paletteId?: string;
+  topic?: string;
+  content?: unknown;
+  slidePaths?: string[];
+  caption?: string;
+  hashtags: string[];
+  error?: string;
+  publishedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function createCarousel(data: {
+  status?: string;
+}): Promise<Carousel> {
+  const result = await pool.query(
+    `INSERT INTO carousels (status)
+     VALUES ($1)
+     RETURNING *`,
+    [data.status || 'pending']
+  );
+  return mapCarousel(result.rows[0]);
+}
+
+export async function getCarousel(id: string): Promise<Carousel | null> {
+  const result = await pool.query('SELECT * FROM carousels WHERE id = $1', [id]);
+  return result.rows[0] ? mapCarousel(result.rows[0]) : null;
+}
+
+export async function updateCarousel(
+  id: string,
+  data: Partial<{
+    status: string;
+    paletteId: string;
+    topic: string;
+    content: unknown;
+    slidePaths: string[];
+    caption: string;
+    hashtags: string[];
+    error: string;
+  }>
+): Promise<Carousel | null> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  let i = 1;
+
+  if (data.status !== undefined) { sets.push(`status = $${i++}`); values.push(data.status); }
+  if (data.paletteId !== undefined) { sets.push(`palette_id = $${i++}`); values.push(data.paletteId); }
+  if (data.topic !== undefined) { sets.push(`topic = $${i++}`); values.push(data.topic); }
+  if (data.content !== undefined) { sets.push(`content = $${i++}`); values.push(JSON.stringify(data.content)); }
+  if (data.slidePaths !== undefined) { sets.push(`slide_paths = $${i++}`); values.push(data.slidePaths); }
+  if (data.caption !== undefined) { sets.push(`caption = $${i++}`); values.push(data.caption); }
+  if (data.hashtags !== undefined) { sets.push(`hashtags = $${i++}`); values.push(data.hashtags); }
+  if (data.error !== undefined) { sets.push(`error = $${i++}`); values.push(data.error); }
+
+  if (sets.length === 0) return getCarousel(id);
+
+  sets.push(`updated_at = NOW()`);
+  values.push(id);
+  const result = await pool.query(
+    `UPDATE carousels SET ${sets.join(', ')} WHERE id = $${i} RETURNING *`,
+    values
+  );
+  return result.rows[0] ? mapCarousel(result.rows[0]) : null;
+}
+
+export async function getCarousels(limit = 20): Promise<Carousel[]> {
+  const result = await pool.query(
+    `SELECT * FROM carousels ORDER BY created_at DESC LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map(mapCarousel);
+}
+
+export async function getCarouselQueue(): Promise<Carousel[]> {
+  const result = await pool.query(
+    `SELECT * FROM carousels
+     WHERE status = 'ready'
+     ORDER BY created_at DESC`
+  );
+  return result.rows.map(mapCarousel);
+}
+
+export async function markCarouselAsPublished(id: string): Promise<Carousel | null> {
+  const result = await pool.query(
+    `UPDATE carousels
+     SET status = 'published', published_at = NOW()
+     WHERE id = $1 AND status = 'ready'
+     RETURNING *`,
+    [id]
+  );
+  return result.rows[0] ? mapCarousel(result.rows[0]) : null;
+}
+
+export async function getRecentCarouselPalettes(limit = 5): Promise<string[]> {
+  const result = await pool.query(
+    `SELECT palette_id FROM carousels
+     WHERE palette_id IS NOT NULL
+     ORDER BY created_at DESC LIMIT $1`,
+    [limit]
+  );
+  return result.rows.map(r => r.palette_id);
+}
+
+function mapCarousel(row: Record<string, unknown>): Carousel {
+  return {
+    id: row.id as string,
+    status: row.status as 'pending' | 'generating' | 'ready' | 'published' | 'failed',
+    paletteId: row.palette_id as string | undefined,
+    topic: row.topic as string | undefined,
+    content: row.content as unknown,
+    slidePaths: row.slide_paths as string[] | undefined,
+    caption: row.caption as string | undefined,
+    hashtags: (row.hashtags as string[]) || [],
+    error: row.error as string | undefined,
+    publishedAt: row.published_at ? new Date(row.published_at as string) : undefined,
+    createdAt: new Date(row.created_at as string),
+    updatedAt: new Date(row.updated_at as string),
+  };
+}
+
 function mapViralVideo(row: Record<string, unknown>): ViralVideo {
   return {
     id: row.id as string,

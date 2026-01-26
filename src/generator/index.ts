@@ -229,9 +229,11 @@ export async function generateMetadata(quote: string): Promise<{
             role: 'system',
             content: `Generate Instagram post metadata for a motivational quote.
 
-CAPTION: Start with the quote, add 1-2 lines of engaging commentary, end with subtle CTA. Keep authentic.
-HASHTAGS: EXACTLY 4 relevant tags (no more, no less), mix popular and niche, lowercase, no #.
+CAPTION: Start with the quote, add 1-2 lines of engaging commentary, end with subtle CTA. Keep authentic. DO NOT include any hashtags in the caption - hashtags go in the separate hashtags field only.
+HASHTAGS: EXACTLY 4 relevant tags (no more, no less), mix popular and niche, lowercase, no # symbol.
 ALT_TEXT: Describe for accessibility, under 200 chars.
+
+IMPORTANT: The caption must NOT contain any # symbols or hashtags. Only 4 hashtags in the hashtags array.
 
 Return JSON: {"caption": "...", "hashtags": ["tag1", "tag2", "tag3", "tag4"], "altText": "..."}`,
           },
@@ -250,12 +252,19 @@ Return JSON: {"caption": "...", "hashtags": ["tag1", "tag2", "tag3", "tag4"], "a
 
     const result = JSON.parse(content);
 
-    // Ensure exactly 4 hashtags
+    // Strip any hashtags from caption (in case GPT included them anyway)
+    let caption = result.caption || defaults.caption;
+    caption = caption.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+
+    // Ensure exactly 4 hashtags (no more, no less)
     let hashtags = result.hashtags || defaults.hashtags;
+    // Remove any # symbols if present
+    hashtags = hashtags.map((h: string) => h.replace(/^#/, ''));
+    // Strictly limit to 4
     if (hashtags.length > 4) {
       hashtags = hashtags.slice(0, 4);
     } else if (hashtags.length < 4) {
-      const fallbackTags = ['becoming', 'growth', 'mindset', 'wisdom', 'motivation'];
+      const fallbackTags = ['becoming', 'growth', 'mindset', 'wisdom'];
       while (hashtags.length < 4) {
         const tag = fallbackTags.find((t: string) => !hashtags.includes(t));
         if (tag) hashtags.push(tag);
@@ -264,7 +273,7 @@ Return JSON: {"caption": "...", "hashtags": ["tag1", "tag2", "tag3", "tag4"], "a
     }
 
     return {
-      caption: result.caption || defaults.caption,
+      caption,
       hashtags,
       altText: result.altText || defaults.altText,
     };

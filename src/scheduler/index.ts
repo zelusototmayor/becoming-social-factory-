@@ -14,6 +14,7 @@ import { publishImage, publishVideo } from '../publisher/instagram.js';
 import { template, selectPalette, getPalette } from '../template.js';
 import type { JobData, Platform } from '../types.js';
 import { generateViralVideo, checkViralSystemStatus } from '../viral/index.js';
+import { generateCarousel } from '../carousel/index.js';
 
 // Redis connection config for BullMQ
 const connection = {
@@ -29,6 +30,7 @@ const contentQueue = new Queue('content', { connection });
 const renderQueue = new Queue('render', { connection });
 const publishQueue = new Queue('publish', { connection });
 const viralQueue = new Queue('viral', { connection });
+const carouselQueue = new Queue('carousel', { connection });
 
 // Workers
 let schedulerWorker: Worker;
@@ -36,6 +38,7 @@ let contentWorker: Worker;
 let renderWorker: Worker;
 let publishWorker: Worker;
 let viralWorker: Worker;
+let carouselWorker: Worker;
 
 /**
  * Initialize scheduler
@@ -78,8 +81,17 @@ export async function init(): Promise<void> {
     }
   }, { connection, concurrency: 1 });
 
+  // Carousel worker - generates TikTok carousels
+  carouselWorker = new Worker('carousel', async (job: Job) => {
+    if (job.name === 'daily') {
+      await generateDailyCarousel();
+    } else if (job.name === 'generate') {
+      await generateDailyCarousel();
+    }
+  }, { connection, concurrency: 1 });
+
   // Error handlers
-  [schedulerWorker, contentWorker, renderWorker, publishWorker, viralWorker].forEach(w => {
+  [schedulerWorker, contentWorker, renderWorker, publishWorker, viralWorker, carouselWorker].forEach(w => {
     w.on('failed', (job, err) => console.error(`Job ${job?.id} failed:`, err.message));
     w.on('completed', (job) => console.log(`Job ${job.id} completed`));
   });
@@ -101,6 +113,12 @@ export async function init(): Promise<void> {
   await viralQueue.add('daily', {}, {
     repeat: { pattern: '0 6 * * *', tz: config.timezone },
     jobId: 'daily-viral',
+  });
+
+  // Daily carousel generation at 7 AM
+  await carouselQueue.add('daily', {}, {
+    repeat: { pattern: '0 7 * * *', tz: config.timezone },
+    jobId: 'daily-carousel',
   });
 
   console.log('Scheduler initialized');
@@ -501,6 +519,32 @@ async function processViralVideoJob(viralVideoId: string): Promise<void> {
 }
 
 /**
+ * Generate daily carousel for TikTok
+ */
+async function generateDailyCarousel(): Promise<void> {
+  console.log('📸 Starting daily carousel generation...');
+
+  try {
+    const result = await generateCarousel({
+      outputDir: config.outputDir,
+      onProgress: (stage, data) => {
+        console.log(`   Carousel stage: ${stage}`, data);
+      },
+    });
+
+    if (result.success) {
+      console.log('✅ Carousel generated:', result.carouselId);
+      console.log(`   Topic: ${result.content?.topic}`);
+      console.log(`   Slides: ${result.slidePaths?.length}`);
+    } else {
+      console.error('❌ Carousel generation failed:', result.error);
+    }
+  } catch (error) {
+    console.error('❌ Carousel generation error:', error);
+  }
+}
+
+/**
  * Calculate evenly spaced times
  */
 function calculateTimes(count: number, start: string, end: string): string[] {
@@ -545,6 +589,11 @@ export async function triggerViralVideoById(viralVideoId: string): Promise<void>
   await viralQueue.add('generate', { viralVideoId });
 }
 
+export async function triggerCarousel(): Promise<void> {
+  console.log('📸 triggerCarousel called - running directly...');
+  await generateDailyCarousel();
+}
+
 /**
  * Get queue stats
  */
@@ -562,6 +611,7 @@ export async function getStats() {
     render: await getQueueStats(renderQueue),
     publish: await getQueueStats(publishQueue),
     viral: await getQueueStats(viralQueue),
+    carousel: await getQueueStats(carouselQueue),
   };
 }
 
@@ -576,6 +626,7 @@ export async function shutdown(): Promise<void> {
     renderWorker?.close(),
     publishWorker?.close(),
     viralWorker?.close(),
+    carouselWorker?.close(),
   ]);
   console.log('Scheduler stopped');
 }

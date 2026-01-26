@@ -14,6 +14,9 @@ import { config } from '../config.js';
 import * as db from '../db/index.js';
 import { getStats, triggerDaily, triggerContent, triggerViralVideo } from '../scheduler/index.js';
 import { checkViralSystemStatus, estimateViralVideoCost } from '../viral/index.js';
+import { generateCarousel, estimateCarouselCost } from '../carousel/index.js';
+import archiver from 'archiver';
+import * as fs from 'fs';
 
 const app = express();
 app.use(express.json());
@@ -192,6 +195,83 @@ app.get('/api/viral/status', requireAuth, async (req, res) => {
   res.json({ status, cost });
 });
 
+// ==================== CAROUSEL ENDPOINTS ====================
+
+// Get carousels
+app.get('/api/carousels', requireAuth, async (req, res) => {
+  const carousels = await db.getCarousels(20);
+  const cost = estimateCarouselCost();
+  res.json({ carousels, costEstimate: cost });
+});
+
+// Get carousel queue (ready to post)
+app.get('/api/carousels/queue', requireAuth, async (req, res) => {
+  const carousels = await db.getCarouselQueue();
+  res.json({ carousels });
+});
+
+// Trigger carousel generation
+app.post('/api/carousels/generate', requireAuth, async (req, res) => {
+  console.log('Carousel /api/carousels/generate endpoint called');
+
+  // Start generation in background
+  generateCarousel().catch(error => {
+    console.error('Carousel generation error:', error);
+  });
+
+  // Respond immediately
+  res.json({ success: true, message: 'Carousel generation started' });
+});
+
+// Download carousel as ZIP
+app.get('/api/carousels/:id/download', requireAuth, async (req, res) => {
+  const carousel = await db.getCarousel(req.params.id);
+  if (!carousel) {
+    return res.status(404).json({ error: 'Carousel not found' });
+  }
+
+  if (!carousel.slidePaths || carousel.slidePaths.length === 0) {
+    return res.status(400).json({ error: 'No slides available' });
+  }
+
+  try {
+    // Set headers for ZIP download
+    const filename = `carousel_${carousel.id.slice(0, 8)}.zip`;
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    // Create ZIP archive
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    // Add each slide to the ZIP
+    for (let i = 0; i < carousel.slidePaths.length; i++) {
+      const slidePath = carousel.slidePaths[i];
+      if (fs.existsSync(slidePath)) {
+        archive.file(slidePath, { name: `slide_${i + 1}.png` });
+      }
+    }
+
+    // Add caption.txt with caption and hashtags
+    const captionContent = `${carousel.caption || ''}\n\n${(carousel.hashtags || []).map(h => '#' + h).join(' ')}`;
+    archive.append(captionContent, { name: 'caption.txt' });
+
+    await archive.finalize();
+  } catch (error) {
+    console.error('ZIP creation failed:', error);
+    res.status(500).json({ error: 'Failed to create ZIP' });
+  }
+});
+
+// Mark carousel as published
+app.post('/api/carousels/:id/mark-published', requireAuth, async (req, res) => {
+  const carousel = await db.markCarouselAsPublished(req.params.id);
+  if (!carousel) {
+    return res.status(404).json({ error: 'Carousel not found or not ready' });
+  }
+  res.json({ success: true, carousel });
+});
+
 // Download video proxy (forces download instead of opening in browser)
 app.get('/api/download', requireAuth, async (req, res) => {
   const url = req.query.url as string;
@@ -257,6 +337,8 @@ const dashboardHtml = `<!DOCTYPE html>
       viralVideos: [],
       viralStatus: null,
       viralCost: null,
+      carousels: [],
+      carouselCost: null,
       stats: null,
       date: new Date().toISOString().split('T')[0],
       isDev: ${config.nodeEnv === 'development'},
@@ -275,9 +357,9 @@ const dashboardHtml = `<!DOCTYPE html>
           if (res.ok) {
             const data = await res.json();
             this.isAdmin = data.authenticated;
-            // Load viral data if authenticated
+            // Load viral and carousel data if authenticated
             if (this.isAdmin) {
-              await this.loadViralData();
+              await Promise.all([this.loadViralData(), this.loadCarouselData()]);
             }
           }
         } catch {}
@@ -340,9 +422,9 @@ const dashboardHtml = `<!DOCTYPE html>
         if (igVideoQueueRes.ok) this.instagramVideoQueue = (await igVideoQueueRes.json()).posts;
         if (statsRes.ok) this.stats = (await statsRes.json()).stats;
 
-        // Load viral videos if admin
+        // Load viral videos and carousels if admin
         if (this.isAdmin) {
-          await this.loadViralData();
+          await Promise.all([this.loadViralData(), this.loadCarouselData()]);
         }
         this.render();
       },
@@ -355,6 +437,17 @@ const dashboardHtml = `<!DOCTYPE html>
             this.viralVideos = viralData.videos;
             this.viralStatus = viralData.systemStatus;
             this.viralCost = viralData.costEstimate;
+          }
+        } catch {}
+      },
+
+      async loadCarouselData() {
+        try {
+          const carouselRes = await fetch('/api/carousels', { credentials: 'include' });
+          if (carouselRes.ok) {
+            const carouselData = await carouselRes.json();
+            this.carousels = carouselData.carousels;
+            this.carouselCost = carouselData.costEstimate;
           }
         } catch {}
       },
@@ -395,6 +488,43 @@ const dashboardHtml = `<!DOCTYPE html>
           } catch (err) {
             console.error('Fetch error:', err);
             alert('Error: ' + err);
+          }
+        });
+      },
+
+      async generateCarouselPost() {
+        this.requireAuth(async () => {
+          try {
+            const res = await fetch('/api/carousels/generate', { method: 'POST', credentials: 'include' });
+            alert('Carousel generation started!');
+            setTimeout(() => this.loadCarouselData().then(() => this.render()), 3000);
+          } catch (err) {
+            alert('Error: ' + err);
+          }
+        });
+      },
+
+      async copyCarouselCaption(carousel) {
+        this.requireAuth(async () => {
+          const text = carousel.caption + '\\n\\n' + carousel.hashtags.map(h => '#' + h).join(' ');
+          await navigator.clipboard.writeText(text);
+          alert('Caption copied!');
+        });
+      },
+
+      async markCarouselPublished(carouselId) {
+        this.requireAuth(async () => {
+          if (!confirm('Mark this carousel as published on TikTok?')) return;
+          const res = await fetch('/api/carousels/' + carouselId + '/mark-published', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (res.ok) {
+            alert('Carousel marked as published!');
+            await this.loadCarouselData();
+            this.render();
+          } else {
+            alert('Failed to mark as published');
           }
         });
       },
@@ -555,6 +685,76 @@ const dashboardHtml = `<!DOCTYPE html>
             </div>
 
             \${this.isAdmin ? \`
+            <!-- TikTok Carousels Queue Section -->
+            <div class="bg-gradient-to-r from-teal-50 to-cyan-50 p-6 rounded-xl mb-8">
+              <div class="flex justify-between items-center mb-4">
+                <div>
+                  <h2 class="text-lg font-semibold">TikTok Carousels</h2>
+                  <p class="text-sm text-gray-500">8-slide carousel posts for growth niche (auto-generated daily at 7 AM)</p>
+                </div>
+                <div class="text-right">
+                  <button onclick="App.generateCarouselPost()" class="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg hover:opacity-90 font-medium">
+                    Generate New Carousel
+                  </button>
+                  <p class="text-xs text-gray-500 mt-1">Est. cost: $\${this.carouselCost?.total?.toFixed(2) || '0.03'}</p>
+                </div>
+              </div>
+
+              <!-- Ready to Post Queue -->
+              <h3 class="text-md font-medium mb-3 text-teal-800">Ready to Post</h3>
+              <div class="space-y-4 mb-6">
+                \${this.carousels.filter(c => c.status === 'ready').length === 0 ? '<p class="text-gray-500 text-sm">No carousels ready to post</p>' : ''}
+                \${this.carousels.filter(c => c.status === 'ready').map(c => {
+                  const firstSlide = c.slidePaths && c.slidePaths[0] ? '/assets/carousels/' + c.id + '/slide_1.png' : null;
+                  return \`
+                  <div class="bg-white p-4 rounded-lg shadow border-l-4 border-teal-400">
+                    <div class="flex gap-4">
+                      \${firstSlide ? \`<img src="\${firstSlide}" class="w-24 h-40 object-cover rounded">\` : '<div class="w-24 h-40 bg-gray-100 rounded flex items-center justify-center text-gray-400">No slides</div>'}
+                      <div class="flex-1">
+                        <div class="flex items-center gap-2 mb-2">
+                          <span class="text-xs px-2 py-1 rounded bg-green-100 text-green-800">ready</span>
+                          <span class="text-xs px-2 py-1 bg-teal-100 text-teal-800 rounded">8 slides</span>
+                          <span class="text-xs text-gray-500">\${new Date(c.createdAt).toLocaleString()}</span>
+                        </div>
+                        <p class="font-medium mb-2">"\${c.topic || 'Topic pending...'}"</p>
+                        \${c.caption ? \`<p class="text-sm text-gray-600 mb-2">\${c.caption.slice(0, 150)}...</p>\` : ''}
+                        \${c.hashtags && c.hashtags.length > 0 ? \`<p class="text-sm text-blue-600 mb-3">\${c.hashtags.map(h => '#' + h).join(' ')}</p>\` : ''}
+                        <div class="flex gap-2 flex-wrap">
+                          <button onclick="App.copyCarouselCaption(\${JSON.stringify(c).replace(/"/g, '&quot;')})" class="text-sm px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy Caption</button>
+                          <a href="/api/carousels/\${c.id}/download" class="text-sm px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700">Download ZIP</a>
+                          <button onclick="App.markCarouselPublished('\${c.id}')" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Mark as Published</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                \`}).join('')}
+              </div>
+
+              <!-- Recent Carousels (published/generating/failed) -->
+              \${this.carousels.filter(c => c.status !== 'ready').length > 0 ? \`
+              <h3 class="text-md font-medium mb-3 text-gray-600">Recent</h3>
+              <div class="space-y-3">
+                \${this.carousels.filter(c => c.status !== 'ready').slice(0, 5).map(c => {
+                  const firstSlide = c.slidePaths && c.slidePaths[0] ? '/assets/carousels/' + c.id + '/slide_1.png' : null;
+                  return \`
+                  <div class="bg-white/60 p-3 rounded-lg">
+                    <div class="flex gap-3 items-center">
+                      \${firstSlide ? \`<img src="\${firstSlide}" class="w-12 h-20 object-cover rounded">\` : '<div class="w-12 h-20 bg-gray-100 rounded"></div>'}
+                      <div class="flex-1">
+                        <div class="flex items-center gap-2">
+                          <span class="text-xs px-2 py-1 rounded \${c.status === 'published' ? 'bg-green-100 text-green-800' : c.status === 'generating' ? 'bg-blue-100 text-blue-800' : c.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800'}">\${c.status}</span>
+                          <span class="text-xs text-gray-500">\${new Date(c.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        <p class="text-sm font-medium truncate">\${c.topic || 'No topic'}</p>
+                        \${c.error ? \`<p class="text-red-600 text-xs">\${c.error}</p>\` : ''}
+                      </div>
+                    </div>
+                  </div>
+                \`}).join('')}
+              </div>
+              \` : ''}
+            </div>
+
             <!-- Viral Videos Section -->
             <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-xl mb-8">
               <div class="flex justify-between items-center mb-4">

@@ -75,6 +75,23 @@ CREATE TABLE IF NOT EXISTS viral_videos (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Carousels (TikTok carousel posts)
+CREATE TABLE IF NOT EXISTS carousels (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'generating', 'ready', 'published', 'failed')),
+    palette_id VARCHAR(50),
+    topic TEXT,
+    content JSONB,
+    slide_paths TEXT[],
+    caption TEXT,
+    hashtags TEXT[] DEFAULT '{}',
+    error TEXT,
+    published_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON posts(scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
@@ -82,6 +99,8 @@ CREATE INDEX IF NOT EXISTS idx_posts_platform ON posts(platform);
 CREATE INDEX IF NOT EXISTS idx_quote_history_created ON quote_history(created_at);
 CREATE INDEX IF NOT EXISTS idx_viral_videos_status ON viral_videos(status);
 CREATE INDEX IF NOT EXISTS idx_viral_videos_created ON viral_videos(created_at);
+CREATE INDEX IF NOT EXISTS idx_carousels_status ON carousels(status);
+CREATE INDEX IF NOT EXISTS idx_carousels_created ON carousels(created_at);
 
 -- Insert default settings
 INSERT INTO settings (id) VALUES (1) ON CONFLICT DO NOTHING;
@@ -108,4 +127,9 @@ CREATE TRIGGER settings_updated_at
 DROP TRIGGER IF EXISTS viral_videos_updated_at ON viral_videos;
 CREATE TRIGGER viral_videos_updated_at
     BEFORE UPDATE ON viral_videos
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+DROP TRIGGER IF EXISTS carousels_updated_at ON carousels;
+CREATE TRIGGER carousels_updated_at
+    BEFORE UPDATE ON carousels
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
