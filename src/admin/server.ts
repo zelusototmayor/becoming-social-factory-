@@ -724,15 +724,16 @@ const dashboardHtml = `<!DOCTYPE html>
       dashboardView() {
         // Build ready-to-publish items with display time
         const readyToPublish = [];
+        const fmtDateTime = (d) => { const dt = new Date(d); return dt.toLocaleDateString([], {day:'numeric', month:'short'}) + ' ' + dt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); };
         this.instagramVideoQueue.forEach(p => {
-          readyToPublish.push({ ...p, contentType: 'ig-reel', sortTime: new Date(p.scheduledAt).getTime(), displayTime: new Date(p.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
+          readyToPublish.push({ ...p, contentType: 'ig-reel', sortTime: new Date(p.scheduledAt).getTime(), displayTime: fmtDateTime(p.scheduledAt) });
         });
         if (this.isAdmin) {
           this.viralVideos.filter(v => v.status === 'ready').forEach(v => {
-            readyToPublish.push({ ...v, contentType: 'viral', sortTime: new Date(v.createdAt).getTime(), displayTime: new Date(v.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
+            readyToPublish.push({ ...v, contentType: 'viral', sortTime: new Date(v.createdAt).getTime(), displayTime: fmtDateTime(v.createdAt) });
           });
           this.carousels.filter(c => c.status === 'ready').forEach(c => {
-            readyToPublish.push({ ...c, contentType: 'carousel', sortTime: new Date(c.createdAt).getTime(), displayTime: new Date(c.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
+            readyToPublish.push({ ...c, contentType: 'carousel', sortTime: new Date(c.createdAt).getTime(), displayTime: fmtDateTime(c.createdAt) });
           });
         }
         readyToPublish.sort((a, b) => a.sortTime - b.sortTime);
@@ -842,11 +843,11 @@ const dashboardHtml = `<!DOCTYPE html>
                   </details>
                 \` : ''}
 
-                <!-- Older items -->
+                <!-- Other days -->
                 \${olderItems.length > 0 ? \`
                   <details class="mb-4">
                     <summary class="section-label mb-2 cursor-pointer hover:text-gray-600">
-                      Older (\${olderItems.length})
+                      Other Days (\${olderItems.length})
                     </summary>
                     <div class="space-y-2 mt-2">
                       \${olderItems.map(item => this.renderReadyCard(item)).join('')}
