@@ -263,6 +263,15 @@ app.get('/api/carousels/:id/download', requireAuth, async (req, res) => {
   }
 });
 
+// Dismiss viral video (remove from ready queue)
+app.post('/api/viral/:id/dismiss', requireAuth, async (req, res) => {
+  const result = await db.updateViralVideo(req.params.id, { status: 'published' });
+  if (!result) {
+    return res.status(404).json({ error: 'Viral video not found' });
+  }
+  res.json({ success: true });
+});
+
 // Mark carousel as published
 app.post('/api/carousels/:id/mark-published', requireAuth, async (req, res) => {
   const carousel = await db.markCarouselAsPublished(req.params.id);
@@ -310,6 +319,7 @@ const dashboardHtml = `<!DOCTYPE html>
     .status-generating { background: #dbeafe; color: #1e40af; }
     .status-generated { background: #d1fae5; color: #065f46; }
     .status-awaiting_manual_publish { background: #fef3c7; color: #92400e; }
+    .status-awaiting { background: #fef3c7; color: #92400e; }
     .status-publishing { background: #fef3c7; color: #92400e; }
     .status-published { background: #d1fae5; color: #065f46; }
     .status-failed { background: #fee2e2; color: #991b1b; }
@@ -335,6 +345,26 @@ const dashboardHtml = `<!DOCTYPE html>
     }
     .error-text.expanded {
       max-height: none;
+    }
+    .dismiss-btn {
+      color: #d1d5db;
+      transition: color 0.15s;
+      cursor: pointer;
+      font-size: 1.25rem;
+      line-height: 1;
+      padding: 0.25rem;
+      border: none;
+      background: none;
+    }
+    .dismiss-btn:hover { color: #ef4444; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .animate-spin { animation: spin 1s linear infinite; display: inline-block; }
+    .section-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #9ca3af;
     }
   </style>
 </head>
@@ -558,6 +588,23 @@ const dashboardHtml = `<!DOCTYPE html>
         });
       },
 
+      async dismissItem(id, contentType) {
+        this.requireAuth(async () => {
+          let url;
+          if (contentType === 'ig-reel') {
+            url = '/api/posts/' + id + '/mark-published';
+          } else if (contentType === 'viral') {
+            url = '/api/viral/' + id + '/dismiss';
+          } else if (contentType === 'carousel') {
+            url = '/api/carousels/' + id + '/mark-published';
+          }
+          if (url) {
+            await fetch(url, { method: 'POST', credentials: 'include' });
+            await this.loadPublicData();
+          }
+        });
+      },
+
       changeDate(newDate) {
         this.date = newDate;
         this.loadPublicData();
@@ -579,20 +626,80 @@ const dashboardHtml = `<!DOCTYPE html>
 
       getContentTypeTag(item, type) {
         if (type === 'carousel') {
-          return '<span class="text-xs px-2 py-1 rounded tag-tt-carousel font-medium">TT Carousel</span>';
+          return '<span class="text-xs px-2 py-0.5 rounded tag-tt-carousel font-medium">TT Carousel</span>';
         }
         if (type === 'viral') {
-          return '<span class="text-xs px-2 py-1 rounded tag-ig-viral font-medium">IG Viral</span><span class="text-xs px-2 py-1 rounded tag-tt-viral font-medium ml-1">TT Viral</span>';
+          return '<span class="text-xs px-2 py-0.5 rounded tag-ig-viral font-medium">IG Viral</span><span class="text-xs px-2 py-0.5 rounded tag-tt-viral font-medium ml-1">TT Viral</span>';
         }
-        // Regular posts
         if (item.platform === 'instagram') {
           if (item.format === 'static') {
-            return '<span class="text-xs px-2 py-1 rounded tag-ig-photo font-medium">IG Photo</span>';
+            return '<span class="text-xs px-2 py-0.5 rounded tag-ig-photo font-medium">IG Photo</span>';
           } else {
-            return '<span class="text-xs px-2 py-1 rounded tag-ig-reel font-medium">IG Reel</span>';
+            return '<span class="text-xs px-2 py-0.5 rounded tag-ig-reel font-medium">IG Reel</span>';
           }
         }
-        return '<span class="text-xs px-2 py-1 rounded bg-gray-100 text-gray-800">' + item.platform + '</span>';
+        return '<span class="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-800">' + item.platform + '</span>';
+      },
+
+      renderReadyCard(item) {
+        const time = item.displayTime || '';
+        const dismissBtn = '<button onclick="App.dismissItem(\\'' + item.id + '\\', \\'' + item.contentType + '\\')" class="dismiss-btn shrink-0" title="Dismiss">&times;</button>';
+
+        if (item.contentType === 'ig-reel') {
+          const videoUrl = this.isDev ? '/assets/' + item.id + '.mp4' : item.assetUrl;
+          return '<div class="bg-white rounded-lg p-3 shadow-sm border-l-4 border-purple-400">' +
+            '<div class="flex items-start gap-3">' +
+            (videoUrl ? '<video src="' + videoUrl + '" class="w-16 h-24 object-cover rounded shrink-0" preload="metadata"></video>' : '<div class="w-16 h-24 bg-gray-100 rounded shrink-0"></div>') +
+            '<div class="flex-1 min-w-0">' +
+            '<div class="flex items-center gap-2 mb-1">' +
+            '<span class="text-xs px-2 py-0.5 rounded tag-ig-reel font-medium">IG Reel</span>' +
+            '<span class="text-xs text-gray-400 font-mono">' + time + '</span>' +
+            '</div>' +
+            '<p class="text-sm font-medium truncate mb-2">&quot;' + (item.quote || '') + '&quot;</p>' +
+            '<div class="flex gap-1.5 flex-wrap">' +
+            '<button onclick="App.copyCaption(' + JSON.stringify(item).replace(/"/g, '&quot;') + ')" class="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy</button>' +
+            (videoUrl ? '<button onclick="App.downloadVideo(\\'' + videoUrl + '\\', \\'' + item.id + '.mp4\\')" class="text-xs px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700">Download</button>' : '') +
+            '<button onclick="App.markAsPublished(\\'' + item.id + '\\')" class="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700">Published</button>' +
+            '</div></div>' + dismissBtn + '</div></div>';
+        }
+
+        if (item.contentType === 'viral') {
+          const viralVideoUrl = this.isDev ? '/assets/viral_' + item.id + '.mp4' : item.assetUrl;
+          return '<div class="bg-white rounded-lg p-3 shadow-sm border-l-4 border-pink-400">' +
+            '<div class="flex items-start gap-3">' +
+            (viralVideoUrl ? '<video src="' + viralVideoUrl + '" class="w-16 h-24 object-cover rounded shrink-0" preload="metadata"></video>' : '<div class="w-16 h-24 bg-gray-100 rounded shrink-0"></div>') +
+            '<div class="flex-1 min-w-0">' +
+            '<div class="flex items-center gap-2 mb-1">' +
+            this.getContentTypeTag(item, 'viral') +
+            (item.mood ? '<span class="text-xs px-2 py-0.5 bg-purple-100 text-purple-800 rounded">' + item.mood + '</span>' : '') +
+            '<span class="text-xs text-gray-400 font-mono">' + time + '</span>' +
+            '</div>' +
+            '<p class="text-sm font-medium truncate mb-2">&quot;' + (item.quote || '') + '&quot;</p>' +
+            '<div class="flex gap-1.5 flex-wrap">' +
+            (viralVideoUrl ? '<button onclick="App.downloadVideo(\\'' + viralVideoUrl + '\\', \\'viral_' + item.id + '.mp4\\')" class="text-xs px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded hover:opacity-90">Download</button>' : '') +
+            '</div></div>' + dismissBtn + '</div></div>';
+        }
+
+        if (item.contentType === 'carousel') {
+          const firstSlide = item.slidePaths && item.slidePaths[0] ? '/assets/carousels/' + item.id + '/slide_1.png' : null;
+          return '<div class="bg-white rounded-lg p-3 shadow-sm border-l-4 border-teal-400">' +
+            '<div class="flex items-start gap-3">' +
+            (firstSlide ? '<img src="' + firstSlide + '" class="w-16 h-24 object-cover rounded shrink-0">' : '<div class="w-16 h-24 bg-gray-100 rounded shrink-0 flex items-center justify-center text-gray-400 text-xs">No slides</div>') +
+            '<div class="flex-1 min-w-0">' +
+            '<div class="flex items-center gap-2 mb-1">' +
+            this.getContentTypeTag(item, 'carousel') +
+            '<span class="text-xs text-gray-500">' + (item.slidePaths?.length || 0) + ' slides</span>' +
+            '<span class="text-xs text-gray-400 font-mono">' + time + '</span>' +
+            '</div>' +
+            '<p class="text-sm font-medium truncate mb-2">&quot;' + (item.topic || '') + '&quot;</p>' +
+            '<div class="flex gap-1.5 flex-wrap">' +
+            '<button onclick="App.copyCarouselCaption(' + JSON.stringify(item).replace(/"/g, '&quot;') + ')" class="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy</button>' +
+            '<a href="/api/carousels/' + item.id + '/download" class="text-xs px-2 py-1 bg-teal-600 text-white rounded hover:bg-teal-700 inline-block">ZIP</a>' +
+            '<button onclick="App.markCarouselPublished(\\'' + item.id + '\\')" class="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700">Published</button>' +
+            '</div></div>' + dismissBtn + '</div></div>';
+        }
+
+        return '';
       },
 
       render() {
@@ -615,286 +722,232 @@ const dashboardHtml = `<!DOCTYPE html>
       },
 
       dashboardView() {
-        // Combine all ready-to-publish items
+        // Build ready-to-publish items with display time
         const readyToPublish = [];
-
-        // Instagram Reels awaiting manual publish
         this.instagramVideoQueue.forEach(p => {
-          readyToPublish.push({ ...p, contentType: 'ig-reel', sortTime: new Date(p.scheduledAt).getTime() });
+          readyToPublish.push({ ...p, contentType: 'ig-reel', sortTime: new Date(p.scheduledAt).getTime(), displayTime: new Date(p.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
         });
-
-        // Viral videos ready
         if (this.isAdmin) {
           this.viralVideos.filter(v => v.status === 'ready').forEach(v => {
-            readyToPublish.push({ ...v, contentType: 'viral', sortTime: new Date(v.createdAt).getTime() });
+            readyToPublish.push({ ...v, contentType: 'viral', sortTime: new Date(v.createdAt).getTime(), displayTime: new Date(v.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
           });
-
-          // Carousels ready
           this.carousels.filter(c => c.status === 'ready').forEach(c => {
-            readyToPublish.push({ ...c, contentType: 'carousel', sortTime: new Date(c.createdAt).getTime() });
+            readyToPublish.push({ ...c, contentType: 'carousel', sortTime: new Date(c.createdAt).getTime(), displayTime: new Date(c.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
           });
         }
-
-        // Sort by time
         readyToPublish.sort((a, b) => a.sortTime - b.sortTime);
 
+        // Group by today / tomorrow / older
+        const now = new Date();
+        const todayStr = now.toDateString();
+        const tmrw = new Date(now); tmrw.setDate(tmrw.getDate() + 1);
+        const tomorrowStr = tmrw.toDateString();
+        const todayItems = readyToPublish.filter(i => new Date(i.sortTime).toDateString() === todayStr);
+        const tomorrowItems = readyToPublish.filter(i => new Date(i.sortTime).toDateString() === tomorrowStr);
+        const olderItems = readyToPublish.filter(i => { const d = new Date(i.sortTime).toDateString(); return d !== todayStr && d !== tomorrowStr; });
+
+        // Build unified schedule for sidebar
+        const schedule = [];
+        this.posts.forEach(p => {
+          schedule.push({ time: new Date(p.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), sortTime: new Date(p.scheduledAt).getTime(), type: p.format === 'static' ? 'IG Photo' : 'IG Reel', typeClass: p.format === 'static' ? 'tag-ig-photo' : 'tag-ig-reel', status: p.status, label: p.quote || '', id: p.id, isPending: p.status === 'pending' || p.status === 'failed' });
+        });
+        if (this.isAdmin) {
+          const selDate = this.date;
+          this.viralVideos.filter(v => new Date(v.createdAt).toISOString().split('T')[0] === selDate).forEach(v => {
+            schedule.push({ time: new Date(v.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), sortTime: new Date(v.createdAt).getTime(), type: 'Viral', typeClass: 'tag-ig-viral', status: v.status, label: v.quote || '', id: v.id });
+          });
+          this.carousels.filter(c => new Date(c.createdAt).toISOString().split('T')[0] === selDate).forEach(c => {
+            schedule.push({ time: new Date(c.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), sortTime: new Date(c.createdAt).getTime(), type: 'TT Carousel', typeClass: 'tag-tt-carousel', status: c.status, label: c.topic || '', id: c.id });
+          });
+        }
+        schedule.sort((a, b) => a.sortTime - b.sortTime);
+
+        // Generating items
+        const generating = [];
+        if (this.isAdmin) {
+          this.viralVideos.filter(v => v.status === 'generating').forEach(v => generating.push({ type: 'Viral', typeClass: 'tag-ig-viral', label: v.quote || 'Creating viral video...' }));
+          this.carousels.filter(c => c.status === 'generating').forEach(c => generating.push({ type: 'Carousel', typeClass: 'tag-tt-carousel', label: c.topic || 'Creating carousel...' }));
+        }
+
         return \`
-          <div class="max-w-6xl mx-auto p-6">
+          <div class="max-w-7xl mx-auto p-6">
+            <!-- Header -->
             <div class="flex justify-between items-center mb-6">
-              <h1 class="text-2xl font-bold">Becoming Social</h1>
+              <div>
+                <h1 class="text-2xl font-bold text-gray-900">Becoming Social</h1>
+                <p class="text-xs text-gray-400">Content Dashboard</p>
+              </div>
               \${this.isAdmin ? \`
-                <button id="logoutBtn" class="text-gray-500 hover:text-gray-700">Logout</button>
+                <button id="logoutBtn" class="text-sm text-gray-500 hover:text-gray-700">Logout</button>
               \` : \`
                 <button id="adminLoginBtn" class="text-blue-600 hover:text-blue-700 text-sm">Admin Login</button>
               \`}
             </div>
 
+            <!-- Stats -->
             \${this.stats ? \`
-            <div class="grid grid-cols-4 gap-4 mb-6">
-              <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-sm text-gray-500">Published</h3>
-                <p class="text-2xl font-bold text-green-600">\${this.stats.published}</p>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <div class="bg-white p-3 rounded-lg shadow-sm">
+                <p class="text-xs text-gray-400 uppercase tracking-wide">Published</p>
+                <p class="text-xl font-bold text-green-600">\${this.stats.published}</p>
               </div>
-              <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-sm text-gray-500">Scheduled</h3>
-                <p class="text-2xl font-bold text-blue-600">\${this.stats.scheduled}</p>
+              <div class="bg-white p-3 rounded-lg shadow-sm">
+                <p class="text-xs text-gray-400 uppercase tracking-wide">Scheduled</p>
+                <p class="text-xl font-bold text-blue-600">\${this.stats.scheduled}</p>
               </div>
-              <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-sm text-gray-500">Awaiting Publish</h3>
-                <p class="text-2xl font-bold text-yellow-600">\${this.stats.awaitingPublish}</p>
+              <div class="bg-white p-3 rounded-lg shadow-sm">
+                <p class="text-xs text-gray-400 uppercase tracking-wide">Awaiting</p>
+                <p class="text-xl font-bold text-yellow-600">\${this.stats.awaitingPublish}</p>
               </div>
-              <div class="bg-white p-4 rounded-lg shadow">
-                <h3 class="text-sm text-gray-500">Failed</h3>
-                <p class="text-2xl font-bold text-red-600">\${this.stats.failed}</p>
+              <div class="bg-white p-3 rounded-lg shadow-sm">
+                <p class="text-xs text-gray-400 uppercase tracking-wide">Failed</p>
+                <p class="text-xl font-bold text-red-600">\${this.stats.failed}</p>
               </div>
             </div>
             \` : ''}
 
-            <!-- ==================== SCHEDULED POSTS ==================== -->
-            <div class="bg-white p-4 rounded-lg shadow mb-6">
-              <div class="flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                  <h2 class="text-lg font-semibold">Scheduled Posts</h2>
-                  <input type="date" id="dateInput" value="\${this.date}" class="border rounded p-2 text-sm">
-                  <button id="todayBtn" class="text-blue-600 text-sm hover:underline">Today</button>
+            <!-- Two-column layout -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              <!-- LEFT COLUMN: Ready to Publish -->
+              <div class="lg:col-span-2">
+                <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-lg p-4 mb-4">
+                  <h2 class="text-lg font-bold text-gray-900">Ready to Publish</h2>
+                  <p class="text-xs text-gray-500">Download media and post manually</p>
                 </div>
-                <div class="flex items-center gap-2 text-xs">
-                  <span class="px-2 py-1 rounded tag-ig-photo">IG Photo</span>
-                  <span class="px-2 py-1 rounded tag-ig-reel">IG Reel</span>
-                  <span class="px-2 py-1 rounded tag-ig-viral">IG Viral</span>
-                  <span class="px-2 py-1 rounded tag-tt-carousel">TT Carousel</span>
-                </div>
-              </div>
-            </div>
 
-            <div class="space-y-3 mb-8">
-              \${this.posts.length === 0 ? '<p class="text-gray-500 bg-white p-4 rounded-lg">No posts scheduled for this date</p>' : ''}
-              \${this.posts.map(p => \`
-                <div class="bg-white p-4 rounded-lg shadow">
-                  <div class="flex justify-between items-start">
-                    <div class="flex gap-4">
-                      \${p.assetUrl ? (p.format === 'video' ? \`<video src="\${p.assetUrl}" class="w-16 h-24 object-cover rounded"></video>\` : \`<img src="\${p.assetUrl}" class="w-16 h-16 object-cover rounded">\`) : '<div class="w-16 h-16 bg-gray-100 rounded"></div>'}
-                      <div>
-                        <div class="flex items-center gap-2 mb-1">
-                          \${this.getContentTypeTag(p)}
-                          <span class="text-gray-500 text-sm font-mono">\${new Date(p.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                          <span class="text-xs px-2 py-1 rounded status-\${p.status}">\${p.status.replace('_', ' ')}</span>
-                        </div>
-                        <p class="font-medium text-sm">\${p.quote || '<em class="text-gray-400">Pending generation...</em>'}</p>
-                        \${this.truncateError(p.error, p.id)}
-                      </div>
-                    </div>
-                    \${p.status === 'pending' || p.status === 'failed' ? \`
-                      <button onclick="App.triggerGenerate('\${p.id}')" class="text-sm px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200">Generate</button>
-                    \` : ''}
-                  </div>
-                </div>
-              \`).join('')}
-
-              \${this.isAdmin ? \`
-              <!-- Show viral videos and carousels in schedule too -->
-              \${this.viralVideos.filter(v => v.status === 'generating').map(v => \`
-                <div class="bg-white p-4 rounded-lg shadow border-l-4 border-purple-400">
-                  <div class="flex gap-4">
-                    <div class="w-16 h-24 bg-purple-100 rounded flex items-center justify-center">
-                      <span class="text-purple-600 text-xs">Generating</span>
-                    </div>
-                    <div>
-                      <div class="flex items-center gap-2 mb-1">
-                        \${this.getContentTypeTag(v, 'viral')}
-                        <span class="text-xs px-2 py-1 rounded status-generating">generating</span>
-                      </div>
-                      <p class="font-medium text-sm">\${v.quote || 'Creating viral video...'}</p>
+                <!-- Today -->
+                \${todayItems.length > 0 ? \`
+                  <div class="mb-4">
+                    <p class="section-label mb-2 flex items-center gap-2">
+                      <span class="w-2 h-2 rounded-full bg-green-500 inline-block"></span> Today
+                    </p>
+                    <div class="space-y-2">
+                      \${todayItems.map(item => this.renderReadyCard(item)).join('')}
                     </div>
                   </div>
-                </div>
-              \`).join('')}
+                \` : \`
+                  <p class="text-gray-400 text-sm bg-white rounded-lg p-4 shadow-sm mb-4">Nothing ready to publish today</p>
+                \`}
 
-              \${this.carousels.filter(c => c.status === 'generating').map(c => \`
-                <div class="bg-white p-4 rounded-lg shadow border-l-4 border-teal-400">
-                  <div class="flex gap-4">
-                    <div class="w-16 h-24 bg-teal-100 rounded flex items-center justify-center">
-                      <span class="text-teal-600 text-xs">Generating</span>
+                <!-- Tomorrow (collapsible) -->
+                \${tomorrowItems.length > 0 ? \`
+                  <details class="mb-4">
+                    <summary class="section-label mb-2 cursor-pointer hover:text-gray-600">
+                      Tomorrow (\${tomorrowItems.length})
+                    </summary>
+                    <div class="space-y-2 mt-2">
+                      \${tomorrowItems.map(item => this.renderReadyCard(item)).join('')}
                     </div>
-                    <div>
-                      <div class="flex items-center gap-2 mb-1">
-                        \${this.getContentTypeTag(c, 'carousel')}
-                        <span class="text-xs px-2 py-1 rounded status-generating">generating</span>
-                      </div>
-                      <p class="font-medium text-sm">\${c.topic || 'Creating carousel...'}</p>
+                  </details>
+                \` : ''}
+
+                <!-- Older items -->
+                \${olderItems.length > 0 ? \`
+                  <details class="mb-4">
+                    <summary class="section-label mb-2 cursor-pointer hover:text-gray-600">
+                      Older (\${olderItems.length})
+                    </summary>
+                    <div class="space-y-2 mt-2">
+                      \${olderItems.map(item => this.renderReadyCard(item)).join('')}
                     </div>
-                  </div>
-                </div>
-              \`).join('')}
-              \` : ''}
-            </div>
-
-            <!-- ==================== READY TO PUBLISH ==================== -->
-            <div class="bg-gradient-to-r from-yellow-50 to-orange-50 p-4 rounded-lg mb-4">
-              <h2 class="text-lg font-semibold">Ready to Publish</h2>
-              <p class="text-sm text-gray-500">Download media and post manually</p>
-            </div>
-
-            <div class="space-y-4 mb-8">
-              \${readyToPublish.length === 0 ? '<p class="text-gray-500 bg-white p-4 rounded-lg">No content ready to publish</p>' : ''}
-              \${readyToPublish.map(item => {
-                if (item.contentType === 'ig-reel') {
-                  const videoUrl = this.isDev ? '/assets/' + item.id + '.mp4' : item.assetUrl;
-                  return \`
-                  <div class="bg-white p-4 rounded-lg shadow border-l-4 border-purple-400">
-                    <div class="flex gap-4">
-                      \${videoUrl ? \`<video src="\${videoUrl}" class="w-24 h-40 object-cover rounded" controls></video>\` : '<div class="w-24 h-40 bg-gray-100 rounded"></div>'}
-                      <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                          <span class="text-xs px-2 py-1 rounded tag-ig-reel font-medium">IG Reel</span>
-                          <span class="text-gray-500 text-sm">\${new Date(item.scheduledAt).toLocaleString()}</span>
-                        </div>
-                        <p class="font-medium mb-2">"\${item.quote}"</p>
-                        <p class="text-sm text-gray-600 mb-2">\${item.caption || ''}</p>
-                        <p class="text-sm text-blue-600 mb-3">\${(item.hashtags || []).map(h => '#' + h).join(' ')}</p>
-                        <div class="flex gap-2 flex-wrap">
-                          <button onclick="App.copyCaption(\${JSON.stringify(item).replace(/"/g, '&quot;')})" class="text-sm px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy Caption</button>
-                          \${videoUrl ? \`<button onclick="App.downloadVideo('\${videoUrl}', '\${item.id}.mp4')" class="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700">Download</button>\` : ''}
-                          <button onclick="App.markAsPublished('\${item.id}')" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Mark Published</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  \`;
-                } else if (item.contentType === 'viral') {
-                  const viralVideoUrl = this.isDev ? '/assets/viral_' + item.id + '.mp4' : item.assetUrl;
-                  return \`
-                  <div class="bg-white p-4 rounded-lg shadow border-l-4 border-pink-400">
-                    <div class="flex gap-4">
-                      \${viralVideoUrl ? \`<video src="\${viralVideoUrl}" class="w-24 h-40 object-cover rounded" controls></video>\` : '<div class="w-24 h-40 bg-gray-100 rounded"></div>'}
-                      <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                          \${this.getContentTypeTag(item, 'viral')}
-                          \${item.mood ? \`<span class="text-xs px-2 py-1 bg-purple-100 text-purple-800 rounded">\${item.mood}</span>\` : ''}
-                        </div>
-                        <p class="font-medium mb-2">"\${item.quote || ''}"</p>
-                        <div class="flex gap-2 flex-wrap">
-                          \${viralVideoUrl ? \`<button onclick="App.downloadVideo('\${viralVideoUrl}', 'viral_\${item.id}.mp4')" class="text-sm px-3 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded hover:opacity-90">Download</button>\` : ''}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  \`;
-                } else if (item.contentType === 'carousel') {
-                  const firstSlide = item.slidePaths && item.slidePaths[0] ? '/assets/carousels/' + item.id + '/slide_1.png' : null;
-                  return \`
-                  <div class="bg-white p-4 rounded-lg shadow border-l-4 border-teal-400">
-                    <div class="flex gap-4">
-                      \${firstSlide ? \`<img src="\${firstSlide}" class="w-24 h-40 object-cover rounded">\` : '<div class="w-24 h-40 bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs">No slides</div>'}
-                      <div class="flex-1">
-                        <div class="flex items-center gap-2 mb-2">
-                          \${this.getContentTypeTag(item, 'carousel')}
-                          <span class="text-xs text-gray-500">\${item.slidePaths?.length || 0} slides</span>
-                        </div>
-                        <p class="font-medium mb-2">"\${item.topic || ''}"</p>
-                        \${item.caption ? \`<p class="text-sm text-gray-600 mb-2">\${item.caption.slice(0, 100)}...</p>\` : ''}
-                        \${item.hashtags && item.hashtags.length > 0 ? \`<p class="text-sm text-blue-600 mb-3">\${item.hashtags.map(h => '#' + h).join(' ')}</p>\` : ''}
-                        <div class="flex gap-2 flex-wrap">
-                          <button onclick="App.copyCarouselCaption(\${JSON.stringify(item).replace(/"/g, '&quot;')})" class="text-sm px-3 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy Caption</button>
-                          <a href="/api/carousels/\${item.id}/download" class="text-sm px-3 py-1 bg-teal-600 text-white rounded hover:bg-teal-700">Download ZIP</a>
-                          <button onclick="App.markCarouselPublished('\${item.id}')" class="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700">Mark Published</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  \`;
-                }
-                return '';
-              }).join('')}
-            </div>
-
-            \${this.isAdmin ? \`
-            <!-- ==================== GENERATE NEW CONTENT ==================== -->
-            <div class="bg-white p-4 rounded-lg shadow mb-4">
-              <h2 class="text-lg font-semibold mb-4">Generate Content</h2>
-              <div class="flex gap-4 flex-wrap">
-                <button onclick="App.generateViralVideo()" class="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:opacity-90 font-medium">
-                  New Viral Video
-                  <span class="text-xs opacity-75 ml-1">~$\${this.viralCost?.total?.toFixed(2) || '0.26'}</span>
-                </button>
-                <button onclick="App.generateCarouselPost()" class="px-4 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg hover:opacity-90 font-medium">
-                  New TT Carousel
-                  <span class="text-xs opacity-75 ml-1">~$\${this.carouselCost?.total?.toFixed(2) || '0.03'}</span>
-                </button>
-              </div>
-            </div>
-
-            <!-- ==================== RECENT HISTORY ==================== -->
-            <details class="bg-white rounded-lg shadow mb-8">
-              <summary class="p-4 cursor-pointer font-semibold text-gray-700 hover:bg-gray-50">Recent History (Viral & Carousels)</summary>
-              <div class="p-4 pt-0 space-y-3">
-                \${this.viralVideos.filter(v => v.status !== 'ready').slice(0, 5).map(v => \`
-                  <div class="flex items-center gap-3 p-2 bg-gray-50 rounded">
-                    <span class="text-xs px-2 py-1 rounded tag-ig-viral">Viral</span>
-                    <span class="text-xs px-2 py-1 rounded status-\${v.status}">\${v.status}</span>
-                    <span class="text-sm flex-1 truncate">\${v.quote || 'No quote'}</span>
-                    \${this.truncateError(v.error, 'viral-' + v.id)}
-                  </div>
-                \`).join('')}
-                \${this.carousels.filter(c => c.status !== 'ready').slice(0, 5).map(c => \`
-                  <div class="flex items-center gap-3 p-2 bg-gray-50 rounded">
-                    <span class="text-xs px-2 py-1 rounded tag-tt-carousel">Carousel</span>
-                    <span class="text-xs px-2 py-1 rounded status-\${c.status}">\${c.status}</span>
-                    <span class="text-sm flex-1 truncate">\${c.topic || 'No topic'}</span>
-                    \${this.truncateError(c.error, 'carousel-' + c.id)}
-                  </div>
-                \`).join('')}
-              </div>
-            </details>
-
-            \${this.viralStatus ? \`
-            <details class="bg-white rounded-lg shadow mb-8">
-              <summary class="p-4 cursor-pointer font-semibold text-gray-700 hover:bg-gray-50">System Status</summary>
-              <div class="p-4 pt-0">
-                <div class="flex gap-4 flex-wrap text-sm">
-                  <span class="\${this.viralStatus.status.ffmpeg ? 'text-green-600' : 'text-red-600'}">
-                    \${this.viralStatus.status.ffmpeg ? 'OK' : 'X'} FFmpeg
-                  </span>
-                  <span class="\${this.viralStatus.status.runway?.available ? 'text-green-600' : 'text-red-600'}">
-                    \${this.viralStatus.status.runway?.available ? 'OK' : 'X'} Runway
-                  </span>
-                  <span class="\${this.viralStatus.status.openai ? 'text-green-600' : 'text-red-600'}">
-                    \${this.viralStatus.status.openai ? 'OK' : 'X'} OpenAI
-                  </span>
-                  <span class="\${this.viralStatus.status.elevenlabs?.available ? 'text-green-600' : 'text-yellow-600'}">
-                    \${this.viralStatus.status.elevenlabs?.available ? 'OK' : '!'} ElevenLabs
-                  </span>
-                  <span class="text-gray-600">
-                    Music: \${this.viralStatus.status.music?.available || 0}/\${this.viralStatus.status.music?.total || 0}
-                  </span>
-                </div>
-                \${this.viralStatus.issues.length > 0 ? \`
-                <div class="mt-2 text-yellow-700 text-sm">\${this.viralStatus.issues.join(' | ')}</div>
+                  </details>
                 \` : ''}
               </div>
-            </details>
-            \` : ''}
-            \` : ''}
+
+              <!-- RIGHT COLUMN: Sidebar -->
+              <div class="lg:col-span-1 space-y-4">
+
+                <!-- Content Factory -->
+                \${this.isAdmin ? \`
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                  <h3 class="font-semibold text-gray-900 text-sm mb-3">Content Factory</h3>
+                  <div class="space-y-2">
+                    <button onclick="App.generateViralVideo()" class="w-full px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:opacity-90 text-sm font-medium flex items-center justify-between">
+                      <span>New Viral Video</span>
+                      <span class="text-xs opacity-75">~$\${this.viralCost?.total?.toFixed(2) || '0.26'}</span>
+                    </button>
+                    <button onclick="App.generateCarouselPost()" class="w-full px-3 py-2 bg-gradient-to-r from-teal-600 to-cyan-600 text-white rounded-lg hover:opacity-90 text-sm font-medium flex items-center justify-between">
+                      <span>New TT Carousel</span>
+                      <span class="text-xs opacity-75">~$\${this.carouselCost?.total?.toFixed(2) || '0.03'}</span>
+                    </button>
+                  </div>
+                  \${generating.length > 0 ? \`
+                  <div class="mt-3 pt-3 border-t">
+                    <p class="section-label mb-2">Generating</p>
+                    \${generating.map(g => \`
+                      <div class="flex items-center gap-2 p-2 bg-blue-50 rounded text-sm mb-1">
+                        <span class="animate-spin text-blue-500">&#x21bb;</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded font-medium \${g.typeClass}">\${g.type}</span>
+                        <span class="text-gray-600 truncate text-xs">\${g.label}</span>
+                      </div>
+                    \`).join('')}
+                  </div>
+                  \` : ''}
+                </div>
+                \` : ''}
+
+                <!-- Schedule -->
+                <div class="bg-white rounded-lg shadow-sm p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="font-semibold text-gray-900 text-sm">Schedule</h3>
+                    <div class="flex items-center gap-2">
+                      <input type="date" id="dateInput" value="\${this.date}" class="border rounded px-2 py-1 text-xs w-32">
+                      <button id="todayBtn" class="text-blue-600 text-xs hover:underline">Today</button>
+                    </div>
+                  </div>
+                  <div class="space-y-0.5">
+                    \${schedule.length === 0 ? '<p class="text-gray-400 text-sm py-2">No content scheduled</p>' : ''}
+                    \${schedule.map(s => \`
+                      <div class="flex items-center gap-2 py-1.5 px-2 rounded \${s.status === 'failed' ? 'bg-red-50' : 'hover:bg-gray-50'}">
+                        <span class="text-xs font-mono text-gray-400 w-11 shrink-0">\${s.time}</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded font-medium \${s.typeClass} shrink-0">\${s.type}</span>
+                        <span class="text-xs px-1.5 py-0.5 rounded status-\${s.status} shrink-0">\${s.status.replace(/_/g, ' ')}</span>
+                        \${s.isPending ? \`<button onclick="App.triggerGenerate('\${s.id}')" class="text-xs text-blue-600 hover:underline shrink-0">Gen</button>\` : ''}
+                      </div>
+                    \`).join('')}
+                  </div>
+                </div>
+
+                <!-- Recent History -->
+                \${this.isAdmin ? \`
+                <details class="bg-white rounded-lg shadow-sm">
+                  <summary class="p-4 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-lg">Recent History</summary>
+                  <div class="px-4 pb-4 space-y-2">
+                    \${this.viralVideos.filter(v => v.status !== 'ready').slice(0, 5).map(v => \`
+                      <div class="flex items-center gap-2 p-2 bg-gray-50 rounded text-xs">
+                        <span class="px-1.5 py-0.5 rounded tag-ig-viral font-medium">Viral</span>
+                        <span class="px-1.5 py-0.5 rounded status-\${v.status}">\${v.status}</span>
+                        <span class="flex-1 truncate text-gray-600">\${v.quote || 'No quote'}</span>
+                      </div>
+                    \`).join('')}
+                    \${this.carousels.filter(c => c.status !== 'ready').slice(0, 5).map(c => \`
+                      <div class="flex items-center gap-2 p-2 bg-gray-50 rounded text-xs">
+                        <span class="px-1.5 py-0.5 rounded tag-tt-carousel font-medium">Carousel</span>
+                        <span class="px-1.5 py-0.5 rounded status-\${c.status}">\${c.status}</span>
+                        <span class="flex-1 truncate text-gray-600">\${c.topic || 'No topic'}</span>
+                      </div>
+                    \`).join('')}
+                  </div>
+                </details>
+
+                \${this.viralStatus ? \`
+                <details class="bg-white rounded-lg shadow-sm">
+                  <summary class="p-4 cursor-pointer text-sm font-semibold text-gray-700 hover:bg-gray-50 rounded-lg">System Status</summary>
+                  <div class="px-4 pb-4">
+                    <div class="flex gap-3 flex-wrap text-xs">
+                      <span class="\${this.viralStatus.status.ffmpeg ? 'text-green-600' : 'text-red-600'}">\${this.viralStatus.status.ffmpeg ? '&#10003;' : '&#10007;'} FFmpeg</span>
+                      <span class="\${this.viralStatus.status.runway?.available ? 'text-green-600' : 'text-red-600'}">\${this.viralStatus.status.runway?.available ? '&#10003;' : '&#10007;'} Runway</span>
+                      <span class="\${this.viralStatus.status.openai ? 'text-green-600' : 'text-red-600'}">\${this.viralStatus.status.openai ? '&#10003;' : '&#10007;'} OpenAI</span>
+                      <span class="\${this.viralStatus.status.elevenlabs?.available ? 'text-green-600' : 'text-yellow-600'}">\${this.viralStatus.status.elevenlabs?.available ? '&#10003;' : '!'} ElevenLabs</span>
+                    </div>
+                    \${this.viralStatus.issues.length > 0 ? \`<p class="mt-2 text-yellow-700 text-xs">\${this.viralStatus.issues.join(' | ')}</p>\` : ''}
+                  </div>
+                </details>
+                \` : ''}
+                \` : ''}
+              </div>
+            </div>
           </div>
         \`;
       },

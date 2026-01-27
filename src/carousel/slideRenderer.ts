@@ -2,7 +2,7 @@
  * Carousel Slide Renderer
  *
  * Renders carousel slides using Sharp with SVG text overlay.
- * Uses 1080x1920 (9:16) format with existing backgroundVideo assets.
+ * Uses 1080x1440 (3:4) format, cropping top of 1080x1920 backgroundVideo assets.
  */
 
 import sharp from 'sharp';
@@ -11,9 +11,9 @@ import * as fs from 'fs';
 import type { Palette } from '../types.js';
 import type { CarouselSlide, CarouselContent } from './types.js';
 
-// Carousel dimensions (9:16 TikTok format)
+// Carousel dimensions (3:4 TikTok carousel format, cropped from 9:16 background)
 const WIDTH = 1080;
-const HEIGHT = 1920;
+const HEIGHT = 1440;
 
 // Dust particle settings
 const DUST_CONFIG = {
@@ -23,7 +23,7 @@ const DUST_CONFIG = {
   minOpacity: 0.08,
   maxOpacity: 0.25,
   // Avoid text areas - particles mostly in corners and edges
-  safeZoneY: { min: 500, max: 1100 },
+  safeZoneY: { min: 400, max: 950 },
   safeZoneMargin: 150,
 };
 
@@ -276,7 +276,7 @@ export async function renderCarouselSlide(
     const backgroundPath = path.resolve(palette.backgroundVideo);
 
     await sharp(backgroundPath)
-      .resize(WIDTH, HEIGHT, { fit: 'cover' })
+      .resize(WIDTH, HEIGHT, { fit: 'cover', position: 'bottom' })
       .composite([
         {
           input: Buffer.from(svgOverlay),
