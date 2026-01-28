@@ -262,12 +262,15 @@ export async function saveInstagramCredentials(data: {
 
 export interface ViralVideo {
   id: string;
-  status: 'pending' | 'generating' | 'ready' | 'failed';
+  status: 'pending' | 'generating' | 'ready' | 'failed' | 'published';
   quote?: string;
+  quoteType?: QuoteType;
   mood?: string;
   sceneId?: string;
   assetPath?: string;
   assetUrl?: string;
+  caption?: string;
+  hashtags: string[];
   error?: string;
   scheduledAt: Date;
   createdAt: Date;
@@ -297,10 +300,13 @@ export async function updateViralVideo(
   data: Partial<{
     status: string;
     quote: string;
+    quoteType: QuoteType;
     mood: string;
     sceneId: string;
     assetPath: string;
     assetUrl: string;
+    caption: string;
+    hashtags: string[];
     error: string;
   }>
 ): Promise<ViralVideo | null> {
@@ -310,10 +316,13 @@ export async function updateViralVideo(
 
   if (data.status !== undefined) { sets.push(`status = $${i++}`); values.push(data.status); }
   if (data.quote !== undefined) { sets.push(`quote = $${i++}`); values.push(data.quote); }
+  if (data.quoteType !== undefined) { sets.push(`quote_type = $${i++}`); values.push(data.quoteType); }
   if (data.mood !== undefined) { sets.push(`mood = $${i++}`); values.push(data.mood); }
   if (data.sceneId !== undefined) { sets.push(`scene_id = $${i++}`); values.push(data.sceneId); }
   if (data.assetPath !== undefined) { sets.push(`asset_path = $${i++}`); values.push(data.assetPath); }
   if (data.assetUrl !== undefined) { sets.push(`asset_url = $${i++}`); values.push(data.assetUrl); }
+  if (data.caption !== undefined) { sets.push(`caption = $${i++}`); values.push(data.caption); }
+  if (data.hashtags !== undefined) { sets.push(`hashtags = $${i++}`); values.push(data.hashtags); }
   if (data.error !== undefined) { sets.push(`error = $${i++}`); values.push(data.error); }
 
   if (sets.length === 0) return getViralVideo(id);
@@ -342,6 +351,51 @@ export async function getViralVideoQueue(): Promise<ViralVideo[]> {
      ORDER BY created_at DESC`
   );
   return result.rows.map(mapViralVideo);
+}
+
+/**
+ * Check if a viral video already exists for a given date
+ */
+export async function viralVideoExistsForDate(date: string, timezone: string): Promise<boolean> {
+  const result = await pool.query(
+    `SELECT EXISTS(
+      SELECT 1 FROM viral_videos
+      WHERE DATE(scheduled_at AT TIME ZONE $2) = $1
+        AND status IN ('generating', 'ready', 'published')
+    ) as exists`,
+    [date, timezone]
+  );
+  return result.rows[0].exists;
+}
+
+/**
+ * Get the latest ready viral video for today (for dashboard display)
+ */
+export async function getTodaysViralVideo(timezone: string): Promise<ViralVideo | null> {
+  const today = new Date().toISOString().split('T')[0];
+  const result = await pool.query(
+    `SELECT * FROM viral_videos
+     WHERE DATE(scheduled_at AT TIME ZONE $1) = $2
+       AND status = 'ready'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [timezone, today]
+  );
+  return result.rows[0] ? mapViralVideo(result.rows[0]) : null;
+}
+
+/**
+ * Clean up stuck generating viral videos (older than 30 minutes)
+ */
+export async function cleanupStuckViralVideos(): Promise<number> {
+  const result = await pool.query(
+    `UPDATE viral_videos
+     SET status = 'failed', error = 'Generation timed out (stuck for >30 minutes)'
+     WHERE status = 'generating'
+       AND created_at < NOW() - INTERVAL '30 minutes'
+     RETURNING id`
+  );
+  return result.rowCount || 0;
 }
 
 /**
@@ -510,12 +564,15 @@ function mapCarousel(row: Record<string, unknown>): Carousel {
 function mapViralVideo(row: Record<string, unknown>): ViralVideo {
   return {
     id: row.id as string,
-    status: row.status as 'pending' | 'generating' | 'ready' | 'failed',
+    status: row.status as 'pending' | 'generating' | 'ready' | 'failed' | 'published',
     quote: row.quote as string | undefined,
+    quoteType: row.quote_type as QuoteType | undefined,
     mood: row.mood as string | undefined,
     sceneId: row.scene_id as string | undefined,
     assetPath: row.asset_path as string | undefined,
     assetUrl: row.asset_url as string | undefined,
+    caption: row.caption as string | undefined,
+    hashtags: (row.hashtags as string[]) || [],
     error: row.error as string | undefined,
     scheduledAt: new Date(row.scheduled_at as string),
     createdAt: new Date(row.created_at as string),

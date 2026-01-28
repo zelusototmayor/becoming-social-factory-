@@ -161,8 +161,14 @@ app.post('/api/posts/:id/generate', requireAuth, async (req, res) => {
 
 // ==================== VIRAL VIDEO ENDPOINTS ====================
 
-// Get viral videos
+// Get viral videos (also cleans up stuck generating videos)
 app.get('/api/viral', requireAuth, async (req, res) => {
+  // Clean up stuck generating videos on each load
+  const cleaned = await db.cleanupStuckViralVideos();
+  if (cleaned > 0) {
+    console.log(`Cleaned up ${cleaned} stuck generating viral video(s)`);
+  }
+
   const videos = await db.getViralVideos(20);
   const status = await checkViralSystemStatus();
   const cost = estimateViralVideoCost();
@@ -556,6 +562,32 @@ const dashboardHtml = `<!DOCTYPE html>
         });
       },
 
+      async copyViralCaption(viralVideo) {
+        this.requireAuth(async () => {
+          const hashtags = viralVideo.hashtags || [];
+          const text = (viralVideo.caption || viralVideo.quote || '') + '\\n\\n' + hashtags.map(h => '#' + h).join(' ');
+          await navigator.clipboard.writeText(text);
+          alert('Caption copied!');
+        });
+      },
+
+      async markViralPublished(viralId) {
+        this.requireAuth(async () => {
+          if (!confirm('Mark this viral video as published on IG & TikTok?')) return;
+          const res = await fetch('/api/viral/' + viralId + '/dismiss', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (res.ok) {
+            alert('Viral video marked as published!');
+            await this.loadViralData();
+            this.render();
+          } else {
+            alert('Failed to mark as published');
+          }
+        });
+      },
+
       async markCarouselPublished(carouselId) {
         this.requireAuth(async () => {
           if (!confirm('Mark this carousel as published on TikTok?')) return;
@@ -676,7 +708,9 @@ const dashboardHtml = `<!DOCTYPE html>
             '</div>' +
             '<p class="text-sm font-medium truncate mb-2">&quot;' + (item.quote || '') + '&quot;</p>' +
             '<div class="flex gap-1.5 flex-wrap">' +
+            (item.caption ? '<button onclick="App.copyViralCaption(' + JSON.stringify(item).replace(/"/g, '&quot;') + ')" class="text-xs px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">Copy</button>' : '') +
             (viralVideoUrl ? '<button onclick="App.downloadVideo(\\'' + viralVideoUrl + '\\', \\'viral_' + item.id + '.mp4\\')" class="text-xs px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded hover:opacity-90">Download</button>' : '') +
+            '<button onclick="App.markViralPublished(\\'' + item.id + '\\')" class="text-xs px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700">Published</button>' +
             '</div></div>' + dismissBtn + '</div></div>';
         }
 
@@ -725,13 +759,26 @@ const dashboardHtml = `<!DOCTYPE html>
         // Build ready-to-publish items with display time
         const readyToPublish = [];
         const fmtDateTime = (d) => { const dt = new Date(d); return dt.toLocaleDateString([], {day:'numeric', month:'short'}) + ' ' + dt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}); };
-        this.instagramVideoQueue.forEach(p => {
+
+        // Get IG Reels (exclude viral posts - those with palette_id='viral')
+        this.instagramVideoQueue.filter(p => p.paletteId !== 'viral').forEach(p => {
           readyToPublish.push({ ...p, contentType: 'ig-reel', sortTime: new Date(p.scheduledAt).getTime(), displayTime: fmtDateTime(p.scheduledAt) });
         });
+
         if (this.isAdmin) {
+          // Group viral videos by date and only show ONE per day (the latest ready one)
+          const viralByDate = {};
           this.viralVideos.filter(v => v.status === 'ready').forEach(v => {
-            readyToPublish.push({ ...v, contentType: 'viral', sortTime: new Date(v.createdAt).getTime(), displayTime: fmtDateTime(v.createdAt) });
+            const dateKey = new Date(v.scheduledAt).toDateString();
+            if (!viralByDate[dateKey] || new Date(v.createdAt) > new Date(viralByDate[dateKey].createdAt)) {
+              viralByDate[dateKey] = v;
+            }
           });
+          Object.values(viralByDate).forEach(v => {
+            // Use scheduledAt for display time (the intended posting time)
+            readyToPublish.push({ ...v, contentType: 'viral', sortTime: new Date(v.scheduledAt).getTime(), displayTime: fmtDateTime(v.scheduledAt) });
+          });
+
           this.carousels.filter(c => c.status === 'ready').forEach(c => {
             readyToPublish.push({ ...c, contentType: 'carousel', sortTime: new Date(c.createdAt).getTime(), displayTime: fmtDateTime(c.createdAt) });
           });
@@ -750,12 +797,15 @@ const dashboardHtml = `<!DOCTYPE html>
         // Build unified schedule for sidebar
         const schedule = [];
         this.posts.forEach(p => {
+          // Skip viral posts (palette_id='viral') - they're managed separately
+          if (p.paletteId === 'viral') return;
           schedule.push({ time: new Date(p.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), sortTime: new Date(p.scheduledAt).getTime(), type: p.format === 'static' ? 'IG Photo' : 'IG Reel', typeClass: p.format === 'static' ? 'tag-ig-photo' : 'tag-ig-reel', status: p.status, label: p.quote || '', id: p.id, isPending: p.status === 'pending' || p.status === 'failed' });
         });
         if (this.isAdmin) {
           const selDate = this.date;
-          this.viralVideos.filter(v => new Date(v.createdAt).toISOString().split('T')[0] === selDate).forEach(v => {
-            schedule.push({ time: new Date(v.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), sortTime: new Date(v.createdAt).getTime(), type: 'Viral', typeClass: 'tag-ig-viral', status: v.status, label: v.quote || '', id: v.id });
+          // Use scheduledAt for viral videos (the intended posting time)
+          this.viralVideos.filter(v => new Date(v.scheduledAt).toISOString().split('T')[0] === selDate).forEach(v => {
+            schedule.push({ time: new Date(v.scheduledAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), sortTime: new Date(v.scheduledAt).getTime(), type: 'Viral', typeClass: 'tag-ig-viral', status: v.status, label: v.quote || '', id: v.id });
           });
           this.carousels.filter(c => new Date(c.createdAt).toISOString().split('T')[0] === selDate).forEach(c => {
             schedule.push({ time: new Date(c.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}), sortTime: new Date(c.createdAt).getTime(), type: 'TT Carousel', typeClass: 'tag-tt-carousel', status: c.status, label: c.topic || '', id: c.id });
@@ -763,11 +813,12 @@ const dashboardHtml = `<!DOCTYPE html>
         }
         schedule.sort((a, b) => a.sortTime - b.sortTime);
 
-        // Generating items
+        // Generating items - only show if actually generating (created within last 30 min)
         const generating = [];
+        const thirtyMinsAgo = Date.now() - 30 * 60 * 1000;
         if (this.isAdmin) {
-          this.viralVideos.filter(v => v.status === 'generating').forEach(v => generating.push({ type: 'Viral', typeClass: 'tag-ig-viral', label: v.quote || 'Creating viral video...' }));
-          this.carousels.filter(c => c.status === 'generating').forEach(c => generating.push({ type: 'Carousel', typeClass: 'tag-tt-carousel', label: c.topic || 'Creating carousel...' }));
+          this.viralVideos.filter(v => v.status === 'generating' && new Date(v.createdAt).getTime() > thirtyMinsAgo).forEach(v => generating.push({ type: 'Viral', typeClass: 'tag-ig-viral', label: v.quote || 'Creating viral video...' }));
+          this.carousels.filter(c => c.status === 'generating' && new Date(c.createdAt).getTime() > thirtyMinsAgo).forEach(c => generating.push({ type: 'Carousel', typeClass: 'tag-tt-carousel', label: c.topic || 'Creating carousel...' }));
         }
 
         return \`

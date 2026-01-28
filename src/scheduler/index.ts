@@ -364,9 +364,28 @@ async function processPublishJob(postId: string): Promise<void> {
 
 /**
  * Generate daily viral video
+ * Viral videos are scheduled at 6:00 AM for posting
  */
 async function generateDailyViralVideo(): Promise<void> {
   console.log('🎬 Starting daily viral video generation...');
+
+  const settings = await db.getSettings();
+
+  // Get today's date
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Check idempotency - only generate one viral video per day
+  if (await db.viralVideoExistsForDate(todayStr, settings.timezone)) {
+    console.log(`🎬 Viral video already exists for ${todayStr}, skipping`);
+    return;
+  }
+
+  // Clean up any stuck generating videos
+  const cleaned = await db.cleanupStuckViralVideos();
+  if (cleaned > 0) {
+    console.log(`🎬 Cleaned up ${cleaned} stuck generating video(s)`);
+  }
 
   // Check system readiness
   console.log('🎬 Checking system status...');
@@ -378,11 +397,14 @@ async function generateDailyViralVideo(): Promise<void> {
     return;
   }
 
+  // Calculate scheduled posting time (6:00 AM in user's timezone)
+  const scheduledPostTime = new Date(`${todayStr}T06:00:00`);
+
   console.log('🎬 Creating viral video record in DB...');
   // Create viral video record in DB (outside try so it's available in catch)
   const viralVideo = await db.createViralVideo({
     status: 'generating',
-    scheduledAt: new Date(),
+    scheduledAt: scheduledPostTime,
   });
   console.log('🎬 Viral video record created:', viralVideo.id);
 
@@ -414,22 +436,14 @@ async function generateDailyViralVideo(): Promise<void> {
         assetUrl,
         mood: result.config?.scene.mood,
         sceneId: result.config?.scene.scenePrompt?.substring(0, 50),
+        caption: result.caption,
+        hashtags: result.hashtags,
+        quoteType: result.config?.quoteType,
       });
 
-      // Create a post record for the Instagram manual publish queue
-      if (result.caption && result.hashtags && result.config) {
-        console.log('📱 Creating Instagram post for manual publish...');
-        const post = await db.createViralPost({
-          quote: result.config.quote,
-          quoteType: result.config.quoteType,
-          caption: result.caption,
-          hashtags: result.hashtags,
-          assetPath: result.outputPath,
-          assetUrl,
-          viralVideoId: viralVideo.id,
-        });
-        console.log(`   Post created: ${post.id} (awaiting manual publish)`);
-      }
+      // Note: Viral videos are managed through viral_videos table only
+      // They appear in the dashboard with both IG Viral and TT Viral badges
+      // No separate posts record is created to avoid duplication
 
       console.log('✅ Viral video generated:', result.outputPath);
     } else {
@@ -487,22 +501,13 @@ async function processViralVideoJob(viralVideoId: string): Promise<void> {
         assetPath: result.outputPath,
         assetUrl,
         mood: result.config?.scene.mood,
+        caption: result.caption,
+        hashtags: result.hashtags,
+        quoteType: result.config?.quoteType,
       });
 
-      // Create a post record for the Instagram manual publish queue
-      if (result.caption && result.hashtags && result.config) {
-        console.log('📱 Creating Instagram post for manual publish...');
-        const post = await db.createViralPost({
-          quote: result.config.quote,
-          quoteType: result.config.quoteType,
-          caption: result.caption,
-          hashtags: result.hashtags,
-          assetPath: result.outputPath,
-          assetUrl,
-          viralVideoId: viralVideoId,
-        });
-        console.log(`   Post created: ${post.id} (awaiting manual publish)`);
-      }
+      // Note: Viral videos are managed through viral_videos table only
+      // They appear in the dashboard with both IG Viral and TT Viral badges
 
       console.log('✅ Viral video ready:', result.outputPath);
     } else {
