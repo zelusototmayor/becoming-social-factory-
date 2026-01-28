@@ -1,0 +1,36 @@
+# Dependencies (installed in container)
+node_modules
+remotion-studio/node_modules
+
+# Output files (mounted as volume)
+output
+*.mp4
+*.mp3
+*.png
+*.jpg
+
+# Git
+.git
+.gitignore
+
+# Dev/IDE
+.env
+.env.*
+.DS_Store
+*.log
+.vscode
+.idea
+
+# Build artifacts
+dist
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Misc
+README.md
+*.md
+scripts
+.claude
