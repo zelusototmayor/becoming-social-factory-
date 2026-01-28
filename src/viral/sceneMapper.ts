@@ -47,36 +47,59 @@ Respond in JSON format:
   "reasoning": "brief explanation"
 }`;
 
-const DYNAMIC_SCENE_PROMPT = `You are a cinematic director creating a visual scene for a 10-second motivational video.
+const DYNAMIC_SCENE_PROMPT = `You are a bold cinematic director creating a UNIQUE visual scene for a 10-second motivational video.
 
-Given a quote, generate a dynamic, cinematic scene prompt for AI video generation (Runway Gen-3).
+Your job is to generate FRESH, UNEXPECTED scenes that stand out from typical AI-generated content.
 
-SCENE PRINCIPLES:
-1. Visual metaphor: The scene should visually represent the quote's message
-2. Subtle movement: Runway works best with slow, deliberate camera movements
-3. Emotional resonance: The atmosphere should match the quote's emotional tone
-4. Vertical format: 9:16 aspect ratio (mobile/TikTok/Reels)
-5. Professional quality: Cinematic lighting, dramatic composition
+⚠️ AVOID THESE OVERUSED CLICHÉS (they look "AI-generated"):
+- Person standing centered in frame / silhouettes
+- Golden hour / sunset / sunrise lighting
+- Ocean waves / beaches / lakes with reflections
+- Mountains with mist/fog
+- Person on cliff edge or shore
+- Floating particles in light beams
+- Soft ethereal glowing atmosphere
+- Cherry blossoms / flowers in slow motion
+- Stars/milky way with silhouette gazing up
 
-CAMERA MOVEMENTS (pick one that fits):
-- Slow dolly forward: Creates intimacy, moving toward revelation
-- Gentle parallax: Subtle depth, contemplative feeling
-- Slow tilt up: Reveals hope, possibility, growth
-- Static with subtle movement: Let the subject's motion tell the story
-- Slow orbit: 360 contemplation, examining from all angles
+✅ INSTEAD, TRY THESE FRESH APPROACHES:
 
-LIGHTING STYLES:
-- Golden hour: Warm, hopeful, new beginnings
-- Blue hour: Contemplative, serene, introspective
-- Dramatic side light: Contrast, strength, determination
-- Soft diffused: Gentle, compassionate, accepting
-- Rim light silhouette: Mystery, power, emergence
+ENVIRONMENTS (vary these!):
+- Urban: subway, elevator, rooftop, neon streets, empty parking garage
+- Indoor: workshop, kitchen, library corner, boxing gym, pottery studio
+- Macro/texture: hands on surfaces, water droplets, fabric weave, rust patterns
+- Abstract: ink dispersing, paint splashing, light refractions, shadows on walls
+- Industrial: forge, factory, construction site, machinery
 
-SCENE ELEMENTS to consider:
-- Natural elements (water, light, sky, trees, mountains)
-- Human silhouettes (when appropriate)
-- Abstract elements (light rays, particles, fog)
-- Architectural elements (paths, doorways, horizons)
+CAMERA ANGLES (be bold!):
+- POV shot (first person perspective)
+- Extreme close-up / macro (texture focus)
+- Dutch angle (tilted, dynamic tension)
+- Overhead / top-down (god's eye view)
+- Low angle (looking up, power perspective)
+- Through glass/window/reflection
+
+LIGHTING (vary beyond golden hour!):
+- Harsh midday sun with strong shadows
+- Single lamp / desk light in darkness
+- Neon / artificial colored light
+- Backlit / rim light silhouettes
+- Overcast flat light
+- Fluorescent industrial
+- Fire / warm artificial glow
+
+MOVEMENT WITHIN FRAME (not just camera movement):
+- Hands doing something (typing, crafting, writing)
+- Objects in motion (spinning record, falling paper)
+- Environmental motion (rain, steam, traffic)
+- Time-lapse style changes
+
+PRINCIPLES:
+1. Visual metaphor: Scene represents the quote's deeper meaning
+2. Simplicity: One strong visual idea, not cluttered
+3. Texture and detail: Close-ups often work better than wide establishing shots
+4. Movement: Something should be moving within the frame
+5. Vertical format: 9:16 aspect ratio (mobile/TikTok/Reels)
 
 Music mood options:
 - epic-building: For powerful, crescendo moments
@@ -96,10 +119,10 @@ Text animation options:
 Respond in JSON format:
 {
   "mood": "one of the mood options",
-  "scenePrompt": "detailed cinematic scene description for Runway (50-100 words)",
+  "scenePrompt": "detailed cinematic scene description for Runway (50-100 words) - BE SPECIFIC about camera angle, lighting, and what moves in frame",
   "musicMood": "one of the music options",
   "textAnimation": "one of the animation options",
-  "reasoning": "brief explanation of choices"
+  "reasoning": "brief explanation of why this scene fits the quote and how it avoids clichés"
 }`;
 
 /**
@@ -181,16 +204,16 @@ export async function generateDynamicScene(quote: string): Promise<DynamicSceneA
 function fallbackDynamicScene(quote: string): DynamicSceneAnalysis {
   const analysis = fallbackAnalysis(quote);
 
-  // Generate a basic scene prompt based on mood
+  // Generate a basic scene prompt based on mood - DIVERSE fallbacks
   const moodScenes: Record<VisualMood, string> = {
-    'quiet-determination': 'Cinematic shot of a lone figure walking along a misty mountain path at dawn. Slow dolly forward. Golden hour light breaks through clouds. Dramatic shadows and volumetric lighting. 9:16 vertical format.',
-    'new-beginnings': 'Sunrise over a calm ocean, golden light reflecting on water. Camera slowly tilts up to reveal expansive sky. Warm, hopeful atmosphere. Lens flare and soft particles in air. Vertical mobile format.',
-    'self-compassion': 'Soft morning light streaming through window curtains. Gentle dust particles floating in air. Slow subtle camera movement. Warm, intimate atmosphere. Soft focus and diffused lighting.',
-    'strength': 'Dramatic silhouette against stormy sky. Lightning illuminates clouds in background. Powerful rim lighting. Slow camera orbit. Epic cinematic atmosphere. Vertical format.',
-    'reflection': 'Person sitting by still lake at blue hour. Mirror-like water reflection. Subtle fog rising. Contemplative atmosphere. Slow parallax camera movement. Serene and peaceful.',
-    'action': 'Dynamic low angle shot of feet running on wet pavement. Slow motion water splashes. Dramatic side lighting. Energy and momentum. Urban environment at golden hour.',
-    'wisdom': 'Ancient tree in ethereal forest. Rays of light piercing through canopy. Mystical atmosphere with floating particles. Slow upward tilt. Nature and timelessness.',
-    'hope': 'Hands reaching toward bright light from darkness. Dramatic god rays. Transition from shadow to illumination. Powerful emotional moment. Vertical cinematic composition.',
+    'quiet-determination': 'Extreme close-up of hands typing on vintage typewriter, harsh desk lamp casting dramatic shadows across keys, methodical rhythm of keystrokes, dust particles visible in light beam, black and white with warm lamp glow, 9:16 vertical format.',
+    'new-beginnings': 'Slow motion of match being struck and igniting into flame, dramatic darkness surrounding single growing light source, sparks flying, moment of creation and transformation, warm orange against black, 9:16 vertical format.',
+    'self-compassion': 'Close-up of hands gently shaping wet clay on pottery wheel, soft natural window light, meditative circular motion, texture of clay visible between fingers, warm earth tones, artisan care and patience, 9:16 vertical format.',
+    'strength': 'Low angle macro shot of small green plant pushing through cracked concrete, harsh midday sun creating strong shadows, urban resilience, gritty texture detail, determination visible in nature, 9:16 vertical format.',
+    'reflection': 'Close-up of vinyl record spinning on turntable, needle in groove, warm lamp light reflecting on black surface, nostalgic atmosphere, slow meditative rotation, contemplative mood, 9:16 vertical format.',
+    'action': 'Dynamic close-up of fingers rapidly typing on backlit keyboard, screen glow reflecting on keys, shallow depth of field, productive energy, slight camera movement, late night work session energy, 9:16 vertical format.',
+    'wisdom': 'Extreme close-up of sand falling through hourglass, individual grains visible in warm amber light, time made tangible, macro lens detail, meditative observation of time passing, 9:16 vertical format.',
+    'hope': 'POV shot walking through dark tunnel toward bright circular exit, light growing stronger with each step, architectural lines converging toward brightness, transition from shadow to illumination, 9:16 vertical format.',
   };
 
   const moodMusic: Record<VisualMood, MusicMood> = {

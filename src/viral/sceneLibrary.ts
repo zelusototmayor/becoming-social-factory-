@@ -1,191 +1,303 @@
 /**
- * Scene Library
+ * Scene Library v2.0
  *
- * Predefined cinematic scene templates for viral videos.
- * Each scene is optimized for specific emotional moods.
+ * Diverse cinematic scene templates for viral videos.
+ * Deliberately breaks away from repetitive patterns:
+ * - No more "person centered in frame" in every shot
+ * - Varied lighting (not always golden hour)
+ * - Mix of environments (urban, indoor, abstract, nature)
+ * - Different camera angles and movements
+ * - Focus on textures, details, and unconventional compositions
  */
 
 import type { SceneTemplate, VisualMood } from './types.js';
 
 export const SCENE_TEMPLATES: SceneTemplate[] = [
-  // QUIET DETERMINATION
+  // ==================== QUIET DETERMINATION ====================
   {
-    id: 'foggy-mountain-walk',
+    id: 'typewriter-keys',
     mood: 'quiet-determination',
-    name: 'Foggy Mountain Walk',
+    name: 'Typewriter Keys',
     runwayPrompt:
-      'Cinematic shot of a solitary person walking on a misty mountain path at dawn, fog rolling through valleys, golden hour light breaking through, slow motion, atmospheric, 9:16 vertical format, film grain',
-    musicMood: 'epic-building',
-    textAnimation: 'word-by-word',
+      'Extreme close-up of vintage typewriter keys being pressed, harsh desk lamp casting dramatic shadows, dust particles visible, deliberate methodical rhythm, black and white with slight sepia, 9:16 vertical format',
+    musicMood: 'contemplative',
+    textAnimation: 'typewriter',
   },
   {
-    id: 'rain-window-reflection',
+    id: 'subway-commute',
     mood: 'quiet-determination',
-    name: 'Rain Window Reflection',
+    name: 'Subway Commute',
     runwayPrompt:
-      'Close-up of rain drops on window glass, blurred city lights beyond, person silhouette visible in reflection, moody blue tones, cinematic depth of field, 9:16 vertical format',
+      'POV shot from inside subway car, city lights streaking past window, reflections on glass, early morning blue light, other passengers blurred in background, urban solitude, cinematic grain, 9:16 vertical format',
     musicMood: 'contemplative',
     textAnimation: 'fade-in',
   },
-
-  // NEW BEGINNINGS
   {
-    id: 'sunrise-ocean',
-    mood: 'new-beginnings',
-    name: 'Sunrise Over Ocean',
+    id: 'coffee-steam',
+    mood: 'quiet-determination',
+    name: 'Morning Coffee Steam',
     runwayPrompt:
-      'Breathtaking sunrise over calm ocean, golden light spreading across water, silhouette of person standing at shore edge, waves gently lapping, cinematic wide shot, 9:16 vertical format',
+      'Macro shot of steam rising from coffee cup in harsh morning sidelight, kitchen window out of focus behind, simple moment of ritual, warm tones against cool shadows, 9:16 vertical format',
+    musicMood: 'gentle-piano',
+    textAnimation: 'fade-in',
+  },
+
+  // ==================== NEW BEGINNINGS ====================
+  {
+    id: 'elevator-doors',
+    mood: 'new-beginnings',
+    name: 'Elevator Doors Opening',
+    runwayPrompt:
+      'Elevator doors slowly opening to reveal bright modern lobby, dramatic light spill, camera pushes forward into the light, architectural lines leading forward, clean minimalist aesthetic, 9:16 vertical format',
     musicMood: 'uplifting-gentle',
     textAnimation: 'reveal',
   },
   {
-    id: 'desert-dawn',
+    id: 'paint-splash',
     mood: 'new-beginnings',
-    name: 'Desert Dawn',
+    name: 'Paint Splash',
     runwayPrompt:
-      'First light hitting desert dunes, warm orange and pink gradients, lone figure walking toward horizon, sand particles floating in light beams, epic scale, 9:16 vertical format',
+      'Slow motion splash of vibrant paint colors colliding and mixing, white background, abstract explosion of possibility, rich saturated colors, artistic and energetic, 9:16 vertical format',
     musicMood: 'epic-building',
-    textAnimation: 'word-by-word',
+    textAnimation: 'kinetic',
+  },
+  {
+    id: 'empty-road-dawn',
+    mood: 'new-beginnings',
+    name: 'Empty Road at Dawn',
+    runwayPrompt:
+      'Low angle shot of empty desert highway stretching to horizon, first light coloring sky pink and orange, no people visible, sense of possibility, road lines leading to vanishing point, 9:16 vertical format',
+    musicMood: 'uplifting-gentle',
+    textAnimation: 'reveal',
   },
 
-  // SELF-COMPASSION
+  // ==================== SELF-COMPASSION ====================
   {
-    id: 'soft-morning-light',
+    id: 'hands-pottery',
     mood: 'self-compassion',
-    name: 'Soft Morning Light',
+    name: 'Hands on Pottery',
     runwayPrompt:
-      'Soft morning sunlight streaming through sheer curtains into peaceful room, dust particles floating in light beams, warm golden tones, gentle and calming, 9:16 vertical format',
+      'Close-up of hands gently shaping wet clay on pottery wheel, soft natural light from window, meditative circular motion, texture of clay visible, warm earth tones, artisan craftwork, 9:16 vertical format',
     musicMood: 'gentle-piano',
     textAnimation: 'fade-in',
   },
   {
-    id: 'garden-rain',
+    id: 'cat-sleeping',
     mood: 'self-compassion',
-    name: 'Garden After Rain',
+    name: 'Sleeping Cat',
     runwayPrompt:
-      'Close-up of flower petals with morning dew drops, soft bokeh background of green garden, water droplets catching light, fresh and peaceful atmosphere, 9:16 vertical format',
+      'Intimate shot of cat sleeping peacefully in warm sunbeam, soft focus background, gentle rise and fall of breathing, cozy blanket textures, afternoon light, contentment and rest, 9:16 vertical format',
     musicMood: 'serene',
-    textAnimation: 'typewriter',
+    textAnimation: 'fade-in',
+  },
+  {
+    id: 'bath-ripples',
+    mood: 'self-compassion',
+    name: 'Bath Ripples',
+    runwayPrompt:
+      'Abstract top-down shot of finger creating ripples in bath water, soft diffused light from above, minimal and calming, water distortion effects, muted pastel tones, self-care moment, 9:16 vertical format',
+    musicMood: 'serene',
+    textAnimation: 'fade-in',
   },
 
-  // STRENGTH
+  // ==================== STRENGTH ====================
   {
-    id: 'storm-cliffs',
+    id: 'forge-sparks',
     mood: 'strength',
-    name: 'Storm at the Cliffs',
+    name: 'Forge Sparks',
     runwayPrompt:
-      'Dramatic waves crashing against rocky cliffs, person standing firm at cliff edge, dark storm clouds with light breaking through, powerful and majestic, 9:16 vertical format',
+      'Dramatic shot of sparks flying from blacksmith forge, orange hot metal being shaped, dark industrial environment with firelight, power and transformation, high contrast, 9:16 vertical format',
     musicMood: 'powerful',
     textAnimation: 'kinetic',
   },
   {
-    id: 'mountain-summit',
+    id: 'concrete-crack',
     mood: 'strength',
-    name: 'Mountain Summit',
+    name: 'Flower Through Concrete',
     runwayPrompt:
-      'Person reaching mountain summit, arms raised in triumph, vast landscape below shrouded in clouds, golden hour light, epic achievement moment, 9:16 vertical format',
+      'Low angle macro shot of small plant breaking through cracked concrete, harsh midday sun creating strong shadows, urban resilience, determination in nature, gritty texture detail, 9:16 vertical format',
     musicMood: 'epic-building',
     textAnimation: 'word-by-word',
   },
-
-  // REFLECTION
   {
-    id: 'lake-mirror',
-    mood: 'reflection',
-    name: 'Mirror Lake',
+    id: 'boxing-gym',
+    mood: 'strength',
+    name: 'Boxing Gym',
     runwayPrompt:
-      'Still lake perfectly reflecting mountains and sky, person sitting at water edge in meditation pose, early morning mist, serene and contemplative, 9:16 vertical format',
+      'Speed bag being hit in rhythm, harsh overhead gym lighting, dust and sweat particles visible, raw industrial space, no face visible just motion and impact, powerful and visceral, 9:16 vertical format',
+    musicMood: 'powerful',
+    textAnimation: 'kinetic',
+  },
+
+  // ==================== REFLECTION ====================
+  {
+    id: 'record-spinning',
+    mood: 'reflection',
+    name: 'Vinyl Record Spinning',
+    runwayPrompt:
+      'Close-up of vinyl record spinning on turntable, needle in groove, warm lamp light reflecting on surface, nostalgic atmosphere, slow meditative rotation, music visible in grooves, 9:16 vertical format',
     musicMood: 'contemplative',
     textAnimation: 'fade-in',
   },
   {
-    id: 'forest-path',
+    id: 'rain-taxi',
     mood: 'reflection',
-    name: 'Forest Path',
+    name: 'Rainy Taxi Window',
     runwayPrompt:
-      'Sunlight filtering through dense forest canopy, person walking slowly on winding path, rays of light creating patterns, peaceful and introspective, 9:16 vertical format',
+      'Interior shot looking out rain-covered taxi window at night city, neon lights distorted through water droplets, urban isolation, contemplative journey, blue and orange contrast, 9:16 vertical format',
+    musicMood: 'contemplative',
+    textAnimation: 'fade-in',
+  },
+  {
+    id: 'empty-theater',
+    mood: 'reflection',
+    name: 'Empty Theater',
+    runwayPrompt:
+      'Single spotlight on empty theater stage, dust particles floating in light beam, rows of empty red velvet seats, dramatic darkness around edges, potential and silence, 9:16 vertical format',
     musicMood: 'gentle-piano',
     textAnimation: 'typewriter',
   },
 
-  // ACTION
+  // ==================== ACTION ====================
   {
-    id: 'city-motion',
+    id: 'keyboard-typing',
     mood: 'action',
-    name: 'City in Motion',
+    name: 'Fast Typing',
     runwayPrompt:
-      'Time-lapse style busy city intersection at night, lights streaking, one person standing still while world moves around them, neon reflections on wet streets, 9:16 vertical format',
+      'Dynamic close-up of fingers rapidly typing on modern keyboard, shallow depth of field, screen glow reflecting on keys, productive energy, slight camera shake, midnight work session, 9:16 vertical format',
+    musicMood: 'epic-building',
+    textAnimation: 'kinetic',
+  },
+  {
+    id: 'subway-rush',
+    mood: 'action',
+    name: 'Subway Rush',
+    runwayPrompt:
+      'Low angle shot of feet rushing past on subway platform, motion blur, harsh fluorescent lighting, urban momentum, time-lapse feeling of movement, steel and concrete textures, 9:16 vertical format',
     musicMood: 'powerful',
     textAnimation: 'kinetic',
   },
   {
-    id: 'running-dawn',
+    id: 'paper-crumple',
     mood: 'action',
-    name: 'Running at Dawn',
+    name: 'Paper Crumple to Throw',
     runwayPrompt:
-      'Athletic person running along empty road at dawn, slow motion, breath visible in cold air, determination on face, golden light behind, cinematic, 9:16 vertical format',
+      'Slow motion of hand crumpling paper and throwing it, frustration turning to action, office environment with dramatic side light, restart moment, creative process, 9:16 vertical format',
     musicMood: 'epic-building',
     textAnimation: 'word-by-word',
   },
 
-  // WISDOM
+  // ==================== WISDOM ====================
   {
-    id: 'ancient-library',
+    id: 'old-hands-book',
     mood: 'wisdom',
-    name: 'Ancient Library',
+    name: 'Weathered Hands on Book',
     runwayPrompt:
-      'Grand old library with towering bookshelves, warm lamp light, dust particles floating, person reading by window, timeless atmosphere, 9:16 vertical format',
+      'Close-up of aged weathered hands turning pages of old book, warm reading lamp light, shallow depth of field, texture of skin and paper, lifetime of knowledge, intimate and quiet, 9:16 vertical format',
     musicMood: 'contemplative',
     textAnimation: 'typewriter',
   },
   {
-    id: 'starry-night',
+    id: 'chess-move',
     mood: 'wisdom',
-    name: 'Starry Night',
+    name: 'Chess Move',
     runwayPrompt:
-      'Person gazing up at vast starry sky, milky way visible, silhouette against cosmic backdrop, sense of wonder and perspective, 9:16 vertical format',
+      'Dramatic overhead shot of hand making chess move, pieces casting long shadows, strategic thinking visible, dark wood and marble textures, decisive moment, contemplative atmosphere, 9:16 vertical format',
+    musicMood: 'contemplative',
+    textAnimation: 'fade-in',
+  },
+  {
+    id: 'city-aerial-night',
+    mood: 'wisdom',
+    name: 'City Grid at Night',
+    runwayPrompt:
+      'Aerial shot of city grid at night, lights forming patterns like circuits, perspective of scale and connection, slow drone drift, urban constellation, understanding the bigger picture, 9:16 vertical format',
     musicMood: 'serene',
     textAnimation: 'fade-in',
   },
 
-  // HOPE
+  // ==================== HOPE ====================
   {
-    id: 'breaking-clouds',
+    id: 'seedling-timelapse',
     mood: 'hope',
-    name: 'Breaking Through Clouds',
+    name: 'Seedling Growing',
     runwayPrompt:
-      'Dramatic clouds parting to reveal brilliant sunlight, rays streaming down like spotlights, aerial perspective, heavenly and hopeful atmosphere, 9:16 vertical format',
+      'Time-lapse style of seedling pushing through dark soil, unfurling first leaves toward light, transformation in progress, life emerging, simple miracle, warm grow light, 9:16 vertical format',
     musicMood: 'uplifting-gentle',
     textAnimation: 'reveal',
   },
   {
-    id: 'spring-bloom',
+    id: 'tunnel-exit',
     mood: 'hope',
-    name: 'Spring Bloom',
+    name: 'Tunnel to Light',
     runwayPrompt:
-      'Cherry blossoms falling gently in slow motion, person looking up with peaceful expression, soft pink petals against blue sky, renewal and hope, 9:16 vertical format',
-    musicMood: 'gentle-piano',
-    textAnimation: 'fade-in',
-  },
-  {
-    id: 'lighthouse-storm',
-    mood: 'hope',
-    name: 'Lighthouse in Storm',
-    runwayPrompt:
-      'Lighthouse beam cutting through dark stormy night, waves crashing below, beacon of hope in darkness, dramatic lighting, cinematic, 9:16 vertical format',
+      'POV walking through dark tunnel toward bright circular exit, light growing stronger with each step, architectural lines converging, transition from dark to light, hopeful emergence, 9:16 vertical format',
     musicMood: 'epic-building',
     textAnimation: 'word-by-word',
   },
   {
-    id: 'child-wonder',
+    id: 'balloon-release',
     mood: 'hope',
-    name: 'Child Wonder',
+    name: 'Balloon Release',
     runwayPrompt:
-      'Child releasing butterfly into sunlit meadow, sense of wonder and innocence, soft focus background of wildflowers, warm afternoon light, 9:16 vertical format',
+      'Single red balloon floating upward against blue sky, shot from below looking up, simple and joyful, childhood wonder, letting go, endless sky above, 9:16 vertical format',
     musicMood: 'uplifting-gentle',
+    textAnimation: 'reveal',
+  },
+  {
+    id: 'first-light-curtains',
+    mood: 'hope',
+    name: 'First Light Through Curtains',
+    runwayPrompt:
+      'Soft morning light slowly filling room through sheer curtains, no people visible, gentle illumination spreading, new day beginning, peaceful awakening, subtle dust particles dancing, 9:16 vertical format',
+    musicMood: 'gentle-piano',
+    textAnimation: 'fade-in',
+  },
+
+  // ==================== BONUS: ABSTRACT/UNCONVENTIONAL ====================
+  {
+    id: 'ink-water',
+    mood: 'reflection',
+    name: 'Ink in Water',
+    runwayPrompt:
+      'Macro shot of black ink slowly dispersing in clear water, abstract flowing forms, mesmerizing organic movement, high contrast black on white, thoughts becoming form, 9:16 vertical format',
+    musicMood: 'contemplative',
+    textAnimation: 'fade-in',
+  },
+  {
+    id: 'neon-puddle',
+    mood: 'action',
+    name: 'Neon Puddle Reflection',
+    runwayPrompt:
+      'Street-level shot of neon signs reflected in rain puddle, distorted colors on wet asphalt, urban night energy, abstract light painting, cyberpunk aesthetic without people, 9:16 vertical format',
+    musicMood: 'powerful',
+    textAnimation: 'kinetic',
+  },
+  {
+    id: 'sand-hourglass',
+    mood: 'wisdom',
+    name: 'Hourglass Sand',
+    runwayPrompt:
+      'Extreme close-up of sand falling through hourglass, individual grains visible, time made tangible, warm amber tones, macro lens detail, meditative observation of time passing, 9:16 vertical format',
+    musicMood: 'contemplative',
+    textAnimation: 'typewriter',
+  },
+  {
+    id: 'match-strike',
+    mood: 'new-beginnings',
+    name: 'Match Strike',
+    runwayPrompt:
+      'Slow motion of match being struck, first spark igniting into flame, dramatic darkness around single light source, moment of creation, fire coming to life, transformation instant, 9:16 vertical format',
+    musicMood: 'epic-building',
     textAnimation: 'reveal',
   },
 ];
+
+/**
+ * Track recently used scenes to avoid repetition
+ */
+let recentlyUsedSceneIds: string[] = [];
+const MAX_RECENT_SCENES = 8;
 
 /**
  * Get scenes by mood
@@ -195,15 +307,36 @@ export function getScenesByMood(mood: VisualMood): SceneTemplate[] {
 }
 
 /**
- * Get a random scene for a mood
+ * Get a random scene for a mood, avoiding recent repetition
  */
 export function getRandomSceneForMood(mood: VisualMood): SceneTemplate {
   const scenes = getScenesByMood(mood);
   if (scenes.length === 0) {
     // Fallback to any scene
-    return SCENE_TEMPLATES[Math.floor(Math.random() * SCENE_TEMPLATES.length)];
+    const available = SCENE_TEMPLATES.filter(s => !recentlyUsedSceneIds.includes(s.id));
+    const pool = available.length > 0 ? available : SCENE_TEMPLATES;
+    const selected = pool[Math.floor(Math.random() * pool.length)];
+    trackSceneUsage(selected.id);
+    return selected;
   }
-  return scenes[Math.floor(Math.random() * scenes.length)];
+
+  // Filter out recently used scenes
+  const availableScenes = scenes.filter(s => !recentlyUsedSceneIds.includes(s.id));
+  const pool = availableScenes.length > 0 ? availableScenes : scenes;
+  
+  const selected = pool[Math.floor(Math.random() * pool.length)];
+  trackSceneUsage(selected.id);
+  return selected;
+}
+
+/**
+ * Track scene usage to prevent repetition
+ */
+function trackSceneUsage(sceneId: string): void {
+  recentlyUsedSceneIds.push(sceneId);
+  if (recentlyUsedSceneIds.length > MAX_RECENT_SCENES) {
+    recentlyUsedSceneIds.shift();
+  }
 }
 
 /**
@@ -211,4 +344,11 @@ export function getRandomSceneForMood(mood: VisualMood): SceneTemplate {
  */
 export function getSceneById(id: string): SceneTemplate | undefined {
   return SCENE_TEMPLATES.find((s) => s.id === id);
+}
+
+/**
+ * Reset the recently used tracker (useful for testing)
+ */
+export function resetRecentScenes(): void {
+  recentlyUsedSceneIds = [];
 }
