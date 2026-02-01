@@ -12,7 +12,56 @@ Automated social content creation and publishing for Becoming.
 - **Template-locked design**: Only text changes
 - **Viral Videos**: AI-generated cinematic micro-stories via Runway
 
-## Viral Video System
+## HeyGen AI UGC Videos (NEW - Recommended)
+
+Generate authentic-looking UGC testimonial videos with AI avatars talking about the app.
+
+### Why HeyGen?
+
+- **Better performance**: UGC-style content outperforms cinematic videos on social
+- **Lower cost**: ~$0.02/video vs $0.26 for Runway
+- **More authentic**: Real-looking people talking about the app
+- **Faster**: 2-5 minutes vs 5-10 minutes for Runway
+
+### Features
+
+- **5 diverse avatar personas** that rotate automatically
+- **7 UGC script templates** (skeptic-believer, morning routine, friend recommendation, etc.)
+- **8 content themes** (anxiety management, mindfulness, breathing exercises, etc.)
+- **AI-generated scripts** with natural speech patterns
+- **Automatic captions and hashtags**
+
+### How It Works
+
+1. Theme is selected (or random)
+2. GPT generates authentic UGC script from template
+3. Avatar is matched to content type
+4. HeyGen renders the video with lip-sync
+5. Video appears in dashboard for posting
+
+### Setup
+
+1. Sign up at [heygen.com](https://heygen.com) (Creator plan $29/mo)
+2. Get API key from Settings > API
+3. Add to `.env`:
+   ```env
+   HEYGEN_API_KEY=your-api-key-here
+   ```
+4. Test: `npx tsx src/scripts/test-heygen.ts`
+
+### Cost
+
+~$0.02 per video:
+- HeyGen: $0.00 (unlimited on Creator plan)
+- OpenAI: ~$0.02 (script generation)
+
+**Monthly**: $29 HeyGen + ~$0.60 OpenAI = ~$30/month for daily videos
+
+---
+
+## Viral Video System (Legacy - Runway)
+
+> **Note**: This system is now disabled by default. HeyGen UGC videos are recommended instead.
 
 Generate AI-powered cinematic micro-story videos optimized for virality:
 
@@ -30,9 +79,10 @@ Generate AI-powered cinematic micro-story videos optimized for virality:
 
 ### Cost
 
-~$0.26 per viral video:
-- Runway: ~$0.25 (5-sec clip)
-- OpenAI: ~$0.01 (scene mapping)
+~$0.60 per viral video:
+- Runway: ~$0.50 (10-sec clip)
+- OpenAI: ~$0.06 (scene mapping + voice)
+- ElevenLabs: ~$0.04 (voice narration)
 
 ## Quick Start
 
@@ -85,7 +135,14 @@ becoming-social-factory/
 │   ├── scheduler/         # Job processing
 │   ├── db/                # Database
 │   ├── admin/             # Dashboard
-│   └── viral/             # Viral video generation
+│   ├── heygen/            # HeyGen AI UGC (NEW - recommended)
+│   │   ├── index.ts       # Main exports
+│   │   ├── types.ts       # Type definitions
+│   │   ├── client.ts      # HeyGen API wrapper
+│   │   ├── avatars.ts     # Avatar personas library
+│   │   ├── scriptGenerator.ts # UGC script generation
+│   │   └── videoGenerator.ts  # Video orchestration
+│   └── viral/             # Runway viral video (legacy)
 │       ├── index.ts       # Main orchestrator
 │       ├── types.ts       # Type definitions
 │       ├── sceneLibrary.ts # 18 cinematic scene templates
@@ -178,10 +235,12 @@ npm run generate:backgrounds
 | `/api/tiktok-queue` | GET | Get TikTok queue |
 | `/api/stats` | GET | Queue statistics |
 | `/api/posts/:id/generate` | POST | Trigger generation |
-| `/api/viral` | GET | Get viral videos |
+| `/api/viral` | GET | Get viral videos (both HeyGen and Runway) |
 | `/api/viral/queue` | GET | Get ready viral videos |
 | `/api/viral/generate` | POST | Generate new viral video |
 | `/api/viral/status` | GET | Check system status |
+| `/api/heygen/generate` | POST | Generate HeyGen UGC video |
+| `/api/heygen/status` | GET | Check HeyGen system status |
 
 ## Environment Variables
 
@@ -190,7 +249,9 @@ npm run generate:backgrounds
 | `DATABASE_URL` | Yes | PostgreSQL connection |
 | `REDIS_HOST` | Yes | Redis host |
 | `OPENAI_API_KEY` | No | For AI quotes (uses fallbacks without) |
-| `RUNWAY_API_KEY` | No | For viral videos (get from dev.runwayml.com) |
+| `HEYGEN_API_KEY` | No | For HeyGen UGC videos (get from heygen.com) |
+| `RUNWAY_API_KEY` | No | For viral videos - legacy (get from dev.runwayml.com) |
+| `ELEVENLABS_API_KEY` | No | For voice narration in Runway videos |
 | `INSTAGRAM_ACCESS_TOKEN` | No | For publishing |
 | `ADMIN_PASSWORD` | No | Dashboard password (default: becoming2024) |
 | `TIMEZONE` | No | Default: Europe/Lisbon |

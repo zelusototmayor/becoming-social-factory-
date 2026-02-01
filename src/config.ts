@@ -19,8 +19,11 @@ const configSchema = z.object({
   openaiApiKey: z.string().optional(),
   openaiModel: z.string().default('gpt-4o'),
 
-  // Runway (AI Video Generation)
+  // Runway (AI Video Generation) - Legacy, replaced by HeyGen
   runwayApiKey: z.string().optional(),
+
+  // HeyGen (AI UGC Video Generation)
+  heygenApiKey: z.string().optional(),
 
   // ElevenLabs (Voice Narration)
   elevenlabsApiKey: z.string().optional(),
@@ -60,6 +63,7 @@ function loadConfig() {
     openaiApiKey: process.env.OPENAI_API_KEY,
     openaiModel: process.env.OPENAI_MODEL,
     runwayApiKey: process.env.RUNWAY_API_KEY,
+    heygenApiKey: process.env.HEYGEN_API_KEY,
     elevenlabsApiKey: process.env.ELEVENLABS_API_KEY,
     metaAppId: process.env.META_APP_ID,
     metaAppSecret: process.env.META_APP_SECRET,

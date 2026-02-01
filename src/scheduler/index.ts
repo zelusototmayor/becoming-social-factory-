@@ -14,6 +14,7 @@ import { publishImage, publishVideo } from '../publisher/instagram.js';
 import { template, selectPalette, getPalette } from '../template.js';
 import type { JobData, Platform } from '../types.js';
 import { generateViralVideo, checkViralSystemStatus } from '../viral/index.js';
+import { generateHeyGenVideo, checkHeyGenStatus } from '../heygen/index.js';
 import { generateCarousel } from '../carousel/index.js';
 
 // Redis connection config for BullMQ
@@ -30,6 +31,7 @@ const contentQueue = new Queue('content', { connection });
 const renderQueue = new Queue('render', { connection });
 const publishQueue = new Queue('publish', { connection });
 const viralQueue = new Queue('viral', { connection });
+const heygenQueue = new Queue('heygen', { connection });
 const carouselQueue = new Queue('carousel', { connection });
 
 // Workers
@@ -38,6 +40,7 @@ let contentWorker: Worker;
 let renderWorker: Worker;
 let publishWorker: Worker;
 let viralWorker: Worker;
+let heygenWorker: Worker;
 let carouselWorker: Worker;
 
 /**
@@ -72,12 +75,21 @@ export async function init(): Promise<void> {
     }
   }, { connection, concurrency: 1 });
 
-  // Viral video worker - generates AI-powered viral videos
+  // Viral video worker - generates AI-powered viral videos (Runway - legacy)
   viralWorker = new Worker('viral', async (job: Job) => {
     if (job.name === 'daily') {
       await generateDailyViralVideo();
     } else if (job.name === 'generate') {
       await processViralVideoJob(job.data.viralVideoId);
+    }
+  }, { connection, concurrency: 1 });
+
+  // HeyGen UGC worker - generates AI UGC videos with avatars (replaces Runway)
+  heygenWorker = new Worker('heygen', async (job: Job) => {
+    if (job.name === 'daily') {
+      await generateDailyHeyGenVideo();
+    } else if (job.name === 'generate') {
+      await generateDailyHeyGenVideo();
     }
   }, { connection, concurrency: 1 });
 
@@ -91,7 +103,7 @@ export async function init(): Promise<void> {
   }, { connection, concurrency: 1 });
 
   // Error handlers
-  [schedulerWorker, contentWorker, renderWorker, publishWorker, viralWorker, carouselWorker].forEach(w => {
+  [schedulerWorker, contentWorker, renderWorker, publishWorker, viralWorker, heygenWorker, carouselWorker].forEach(w => {
     w.on('failed', (job, err) => console.error(`Job ${job?.id} failed:`, err.message));
     w.on('completed', (job) => console.log(`Job ${job.id} completed`));
   });
@@ -109,10 +121,16 @@ export async function init(): Promise<void> {
     jobId: 'publish-check',
   });
 
-  // Daily viral video generation at 6 AM
-  await viralQueue.add('daily', {}, {
+  // Daily viral video generation at 6 AM (Runway - legacy, disabled)
+  // await viralQueue.add('daily', {}, {
+  //   repeat: { pattern: '0 6 * * *', tz: config.timezone },
+  //   jobId: 'daily-viral',
+  // });
+
+  // Daily HeyGen UGC video generation at 6 AM (replaces Runway)
+  await heygenQueue.add('daily', {}, {
     repeat: { pattern: '0 6 * * *', tz: config.timezone },
-    jobId: 'daily-viral',
+    jobId: 'daily-heygen',
   });
 
   // Daily carousel generation at 7 AM
@@ -524,6 +542,96 @@ async function processViralVideoJob(viralVideoId: string): Promise<void> {
 }
 
 /**
+ * Generate daily HeyGen UGC video
+ * Replaces Runway viral videos with HeyGen AI avatars
+ */
+async function generateDailyHeyGenVideo(): Promise<void> {
+  console.log('🎬 Starting daily HeyGen UGC video generation...');
+
+  const settings = await db.getSettings();
+
+  // Get today's date
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  // Check idempotency - check viral_videos table since we're replacing that workflow
+  if (await db.viralVideoExistsForDate(todayStr, settings.timezone)) {
+    console.log(`🎬 Video already exists for ${todayStr}, skipping`);
+    return;
+  }
+
+  // Check system readiness
+  console.log('🎬 Checking HeyGen system status...');
+  const status = await checkHeyGenStatus();
+  console.log('🎬 System status:', JSON.stringify(status, null, 2));
+
+  if (!status.ready) {
+    console.warn('⚠️ HeyGen system not ready:', status.issues.join(', '));
+    return;
+  }
+
+  // Calculate scheduled posting time (6:00 AM in user's timezone)
+  const scheduledPostTime = new Date(`${todayStr}T06:00:00`);
+
+  console.log('🎬 Creating video record in DB...');
+  const viralVideo = await db.createViralVideo({
+    status: 'generating',
+    scheduledAt: scheduledPostTime,
+  });
+  console.log('🎬 Video record created:', viralVideo.id);
+
+  try {
+    // Generate the HeyGen video
+    const result = await generateHeyGenVideo({
+      outputDir: config.outputDir,
+      filename: `heygen_${viralVideo.id}.mp4`,
+      onProgress: async (data) => {
+        console.log(`   HeyGen progress: ${data.stage} - ${data.message}`);
+        // Update DB with script info as soon as available
+        if (data.script) {
+          await db.updateViralVideo(viralVideo.id, {
+            quote: data.script.fullText.slice(0, 500),
+          });
+        }
+      },
+    });
+
+    if (result.success && result.outputPath) {
+      const assetUrl = config.storageUrlBase
+        ? `${config.storageUrlBase}heygen_${viralVideo.id}.mp4`
+        : `file://${result.outputPath}`;
+
+      await db.updateViralVideo(viralVideo.id, {
+        status: 'ready',
+        quote: result.script?.fullText.slice(0, 500),
+        assetPath: result.outputPath,
+        assetUrl,
+        mood: result.theme,
+        caption: result.caption,
+        hashtags: result.hashtags,
+      });
+
+      console.log('✅ HeyGen UGC video generated:', result.outputPath);
+      console.log(`   Avatar: ${result.avatar?.name}`);
+      console.log(`   Theme: ${result.theme}`);
+      console.log(`   Template: ${result.script?.template}`);
+    } else {
+      await db.updateViralVideo(viralVideo.id, {
+        status: 'failed',
+        error: result.error || 'Unknown error',
+      });
+      console.error('❌ HeyGen video generation failed:', result.error);
+    }
+  } catch (error) {
+    console.error('❌ HeyGen video generation error:', error);
+    await db.updateViralVideo(viralVideo.id, {
+      status: 'failed',
+      error: String(error),
+    });
+  }
+}
+
+/**
  * Generate daily carousel for TikTok
  */
 async function generateDailyCarousel(): Promise<void> {
@@ -599,6 +707,11 @@ export async function triggerCarousel(): Promise<void> {
   await generateDailyCarousel();
 }
 
+export async function triggerHeyGenVideo(): Promise<void> {
+  console.log('🎬 triggerHeyGenVideo called - running directly...');
+  await generateDailyHeyGenVideo();
+}
+
 /**
  * Get queue stats
  */
@@ -616,6 +729,7 @@ export async function getStats() {
     render: await getQueueStats(renderQueue),
     publish: await getQueueStats(publishQueue),
     viral: await getQueueStats(viralQueue),
+    heygen: await getQueueStats(heygenQueue),
     carousel: await getQueueStats(carouselQueue),
   };
 }
@@ -631,6 +745,7 @@ export async function shutdown(): Promise<void> {
     renderWorker?.close(),
     publishWorker?.close(),
     viralWorker?.close(),
+    heygenWorker?.close(),
     carouselWorker?.close(),
   ]);
   console.log('Scheduler stopped');
