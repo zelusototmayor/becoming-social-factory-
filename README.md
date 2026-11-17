@@ -279,3 +279,12 @@ docker-compose up -d
 ## License
 
 Private - Becoming App
+
+
+## Development data and credentials
+
+This is a content-production tool for my own application and publishing accounts. Develop with synthetic content and placeholder account configuration. Do not commit account tokens, real credentials, database dumps, generated output folders or information belonging to other people. Optional publishing and generation integrations require separately configured services; do not run them unintentionally.
+
+## License
+
+Original source-code contributions are licensed under the MIT License; see [LICENSE](LICENSE). Dependencies, fonts, branding and third-party media retain their own licenses and rights.
